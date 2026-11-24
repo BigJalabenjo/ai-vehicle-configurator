@@ -73,9 +73,22 @@ svg { flex: none; }
 .hero { padding: 48px clamp(16px, 5vw, 64px) 8px; max-width: 980px; }
 .eyebrow { margin: 0 0 8px; font-size: 13px; color: var(--text-2); }
 .hero h1 { font-size: clamp(28px, 3.2vw, 40px); line-height: 1.15; }
-.messages { padding: 24px clamp(16px, 5vw, 64px) 32px; display: flex; flex-direction: column; gap: 28px; max-width: 980px; }
+.messages { padding: 24px clamp(16px, 5vw, 64px) 32px; display: flex; flex-direction: column; gap: 24px; max-width: 980px; }
+/* once the conversation has started, the headline steps aside */
+body.started .hero { display: none; }
+body.started .messages { padding-top: 32px; }
+/* condensed older turns */
+.msg.condensed { gap: 8px; }
+.msg.condensed .bubble { color: var(--text-2); }
+.fold { font-size: 13px; color: var(--text-2); }
+.fold > summary { cursor: pointer; list-style: none; display: inline-flex; align-items: center; gap: 6px; }
+.fold > summary::-webkit-details-marker { display: none; }
+.fold > summary::before { content: "+"; font-size: 15px; line-height: 1; }
+.fold[open] > summary::before { content: "−"; }
+.fold[open] > .comp { margin-top: 12px; font-size: 15px; color: var(--text); }
+.small-note { font-size: 13px; margin: 10px 0 0; }
 .panel { background: var(--bg-2); overflow-y: auto; padding: 32px 28px; display: flex; flex-direction: column; gap: 36px; }
-.panel-section h2 { font-size: 22px; margin-bottom: 16px; }
+.panel-section h2 { font-size: 20px; margin-bottom: 14px; }
 
 /* ------------------------------------------------------------------ messages */
 .msg { display: flex; flex-direction: column; gap: 16px; }
@@ -111,9 +124,13 @@ svg { flex: none; }
 
 /* model tiles (bmw.de style) */
 .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 16px; background: var(--bg-2); padding: 16px; }
-.model-card { background: #fff; padding: 20px; display: flex; flex-direction: column; gap: 10px; }
-.model-card h4 { font-size: 22px; line-height: 1.2; min-height: 2.4em; }
-.model-card .tags { min-height: 46px; align-content: flex-start; }
+.model-card { background: #fff; padding: 20px; display: flex; flex-direction: column; gap: 6px; }
+.model-card h4 { font-size: 20px; line-height: 1.25; min-height: 2.5em; }
+.kicker { margin: 0; font-size: 12px; color: var(--text-2); }
+.status { font-size: 13px; display: inline-flex; align-items: center; gap: 6px; color: var(--text-2); }
+.status::before { content: ""; flex: none; width: 7px; height: 7px; border-radius: 50%; background: var(--ok); }
+.status.warn::before { background: var(--warn); }
+.model-card > .status { margin: 2px 0 10px; min-height: 20px; }
 .car { color: var(--text); padding: 8px 0 4px; }
 .car svg { width: 100%; height: 64px; }
 .car:has(.car-photo) { overflow: hidden; padding: 0; }
@@ -121,10 +138,10 @@ svg { flex: none; }
 .car-photo { display: block; width: 100%; height: 150px; object-fit: contain; transform: scale(1.45); }
 .summary .car-photo { height: 200px; max-width: 420px; }
 .config-model .car-photo { height: 160px; }
-.price { font-size: 14px; color: var(--text-2); }
-.price strong { font-size: 20px; color: var(--text); font-weight: 400; margin-left: 4px; }
-.price small { display: block; font-size: 12px; color: var(--text-3); }
-.facts { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 13px; color: var(--text-2); padding: 10px 0; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+.price { font-size: 13px; color: var(--text-2); }
+.price strong { font-size: 18px; color: var(--text); font-weight: 400; margin-left: 2px; }
+.facts { margin: 0; font-size: 13px; color: var(--text-2); }
+.summary .facts { display: flex; flex-wrap: wrap; gap: 4px 12px; }
 .reasons, .violations { list-style: none; margin: 0; padding: 0; font-size: 14px; display: flex; flex-direction: column; gap: 4px; }
 .reasons li, .violations li { padding-left: 20px; position: relative; }
 .reasons li::before { content: ""; position: absolute; left: 2px; top: 6px; width: 9px; height: 5px; border-left: 1.5px solid var(--ok); border-bottom: 1.5px solid var(--ok); transform: rotate(-45deg); }
@@ -142,9 +159,10 @@ table { border-collapse: collapse; width: 100%; font-size: 14px; }
 .compare td.best::after { content: " ●"; color: var(--blue); font-size: 9px; vertical-align: middle; }
 
 /* trade-offs */
-.tradeoff { display: flex; justify-content: space-between; align-items: center; gap: 20px; padding: 14px 0; border-bottom: 1px solid var(--line); }
-.tradeoff strong { font-weight: 500; }
-.tradeoff p { margin: 2px 0 0; font-size: 14px; color: var(--text-2); }
+.tradeoff { display: flex; justify-content: space-between; align-items: center; gap: 20px; padding: 10px 0; border-bottom: 1px solid var(--line); font-size: 14px; }
+.text-link { background: none; border: 0; padding: 4px 0; color: var(--blue); font-weight: 500; font-size: 14px; white-space: nowrap; }
+.text-link:hover:not(:disabled) { text-decoration: underline; }
+.text-link:disabled { color: var(--text-3); }
 
 /* conflict & notices */
 .conflict, .notice { border-top: 0; padding: 16px 20px; background: var(--bg-2); border-left: 3px solid var(--warn); }
@@ -191,7 +209,7 @@ table { border-collapse: collapse; width: 100%; font-size: 14px; }
 .assumptions ul { padding-left: 18px; margin: 8px 0 0; }
 
 .config-model { background: #fff; padding: 20px; }
-.config-model .tags { margin-bottom: 10px; }
+.config-model .kicker { margin-bottom: 6px; }
 .config-model h3 { font-size: 24px; line-height: 1.2; }
 .config-model .car svg { height: 72px; }
 .config-price { display: flex; justify-content: space-between; align-items: baseline; margin-top: 4px; }
@@ -210,7 +228,9 @@ table { border-collapse: collapse; width: 100%; font-size: 14px; }
 
 .opt-group { background: #fff; border-top: 1px solid var(--line); }
 .opt-group:first-of-type { margin-top: 16px; }
-.opt-group summary { list-style: none; display: flex; justify-content: space-between; align-items: center; padding: 16px 20px; cursor: pointer; font-weight: 400; font-size: 15px; }
+.opt-group summary { list-style: none; display: flex; align-items: center; gap: 10px; padding: 14px 20px; cursor: pointer; font-weight: 400; font-size: 15px; }
+.opt-group summary .count { font-size: 12px; color: var(--text-2); }
+.opt-group summary::after { margin-left: auto; }
 .opt-group summary::-webkit-details-marker { display: none; }
 .opt-group summary::after { content: ""; width: 8px; height: 8px; border-right: 1.5px solid var(--text); border-bottom: 1.5px solid var(--text); transform: rotate(45deg); margin-top: -4px; transition: transform .15s; }
 .opt-group[open] summary::after { transform: rotate(-135deg); margin-top: 4px; }

@@ -83,6 +83,7 @@ async function startSession() {
   sessionId = body.session_id;
   try { localStorage.setItem("sessionId", sessionId); } catch { /* storage unavailable */ }
   els.messages.innerHTML = "";
+  document.body.classList.remove("started");
   setMode(body.mode);
   renderMessage(body.message);
   renderState(body.state);
@@ -97,7 +98,7 @@ async function restoreSession() {
     sessionId = saved;
     setMode(body.mode);
     els.messages.innerHTML = "";
-    body.transcript.forEach((m, i) => renderMessage(m, i < body.transcript.length - 1));
+    body.transcript.forEach((m) => renderMessage(m));
     renderState(body.state);
   } catch {
     await startSession();
@@ -163,16 +164,37 @@ function renderError(text, retry) {
   scroll();
 }
 
-function renderMessage(msg, historical = false) {
+// Only the latest assistant message keeps its full UI. Older ones are condensed so the
+// conversation stays lean: answered/stale prompts disappear, bigger blocks fold into one line.
+const TRANSIENT = ["question", "slider", "conflict", "tradeoffs", "notice"];
+const FOLD_LABEL = { model_cards: "suggested models", comparison: "comparison", option_toggles: "suggested options", summary: "summary" };
+
+function condensePrevious() {
+  els.messages.querySelectorAll(".msg.assistant:not(.condensed)").forEach((msg) => {
+    msg.classList.add("condensed");
+    msg.querySelectorAll(":scope > .comp").forEach((comp) => {
+      const type = comp.dataset.type;
+      if (TRANSIENT.includes(type)) { comp.remove(); return; }
+      const fold = h("details", { class: "fold" }, `<summary>Show earlier ${FOLD_LABEL[type] || "details"}${comp.dataset.hint ? `: ${esc(comp.dataset.hint)}` : ""}</summary>`);
+      comp.replaceWith(fold);
+      fold.append(comp);
+    });
+  });
+}
+
+function renderMessage(msg) {
+  if (msg.role === "assistant") condensePrevious();
   const wrap = h("div", { class: `msg ${msg.role}` });
   if (msg.text) wrap.append(h("div", { class: "bubble" }, md(msg.text)));
   for (const c of msg.components || []) {
     const el = renderComponent(c);
     if (!el) continue;
-    if (historical && ["question", "slider", "conflict", "tradeoffs"].includes(c.type)) el.classList.add("done");
+    el.dataset.type = c.type;
+    if (c.type === "model_cards") el.dataset.hint = c.cards.map((x) => x.name.replace(/^BMW /, "")).join(", ");
     wrap.append(el);
   }
   els.messages.append(wrap);
+  if (msg.role === "user") document.body.classList.add("started");
   scroll();
 }
 
@@ -219,19 +241,19 @@ const COMPONENTS = {
   model_cards(c) {
     const el = h("div", { class: "comp" }, `<h3>${esc(c.title)}</h3>`);
     const grid = h("div", { class: "cards" });
-    c.cards.forEach((card) => {
-      const fit = card.fits ? `<span class="tag dark">Meets your needs</span>` : `<span class="tag outline">Needs a compromise</span>`;
-      const extra = card.entry_price !== card.base_price ? `<small>Base ${eur(card.base_price)} + options your needs require</small>` : "";
-      const item = h("article", { class: "model-card" }, `
-        <div class="tags"><span class="tag">${esc(BODY[card.body] || card.body)}</span><span class="tag">${esc(card.powertrain)}</span>${fit}</div>
-        <h4>${esc(card.name)}</h4>
+    const best = c.cards.findIndex((x) => x.fits);
+    c.cards.forEach((card, i) => {
+      const status = card.fits ? `<span class="status ok">Meets your needs</span>`
+        : `<span class="status warn" title="${esc(card.violations.join("; "))}">${esc(card.violations[0] || "Needs a compromise")}</span>`;
+      const item = h("article", { class: "model-card", title: card.reasons.join(" · ") }, `
+        <p class="kicker">${esc(BODY[card.body] || card.body)} · ${esc(card.powertrain)}</p>
+        <h4>${esc(card.name.replace(/^BMW /, ""))}</h4>
         <div class="car">${carVisual(card.model_id, card.body, card.name)}</div>
-        <div class="price">from<strong>${eur(card.entry_price)}</strong>${extra}</div>
-        <div class="facts">${card.highlights.map((x) => `<span>${esc(x)}</span>`).join("")}</div>
-        <ul class="reasons">${card.reasons.map((r) => `<li>${esc(r)}</li>`).join("")}</ul>
-        ${card.violations.length ? `<ul class="violations">${card.violations.map((v) => `<li>${esc(v)}</li>`).join("")}</ul>` : ""}`);
+        <div class="price">from <strong>${eur(card.entry_price)}</strong></div>
+        <p class="facts">${card.highlights.slice(0, 3).map(esc).join(" · ")}</p>
+        ${status}`);
       item.append(h("button", {
-        class: `btn ${card.fits ? "primary" : "secondary"}`,
+        class: `btn ${i === best ? "primary" : "secondary"}`,
         onclick: () => act({ type: "select_model", model_id: card.model_id }, `Configure the ${card.name}`),
       }, "Configure"));
       grid.append(item);
@@ -256,9 +278,11 @@ const COMPONENTS = {
   tradeoffs(c) {
     const el = h("div", { class: "comp tradeoffs" }, `<h3>${esc(c.title)}</h3>`);
     c.items.forEach((t) => {
-      const row = h("div", { class: "tradeoff" }, `<div><strong>${esc(t.label)}</strong><p>${esc(t.description)}</p></div>`);
+      const model = (t.description.match(/^(BMW [^(]+?) would fit/) || [])[1] || "";
+      const row = h("div", { class: "tradeoff", title: t.description },
+        `<span>${esc(t.label)}${model ? ` <span class="muted">→ ${esc(model.replace(/^BMW /, ""))}</span>` : ""}</span>`);
       row.append(h("button", {
-        class: "btn secondary small",
+        class: "text-link",
         onclick: () => { markDone(el); act({ type: "apply_tradeoff", patch: t.patch, label: t.label }, `Accept: ${t.label}`); },
       }, "Accept"));
       el.append(row);
@@ -268,7 +292,8 @@ const COMPONENTS = {
 
   option_toggles(c) {
     const el = h("div", { class: "comp" }, `<h3>${esc(c.title)}</h3>`);
-    c.options.forEach((o) => el.append(optionRow(o, true)));
+    c.options.slice(0, 4).forEach((o) => el.append(optionRow(o, true)));
+    if (c.options.length > 4) el.append(h("p", { class: "muted small-note" }, "More options in your configuration on the right."));
     return el;
   },
 
@@ -319,7 +344,7 @@ const COMPONENTS = {
 function optionRow(o, compact = false) {
   const locked = o.state === "standard" || o.state === "included";
   const on = o.state === "selected" || locked;
-  const row = h("label", { class: `opt ${o.state}`, title: o.note || o.description });
+  const row = h("label", { class: `opt ${o.state}`, title: [o.recommended_reason, o.note || o.description].filter(Boolean).join(" · ") });
   const box = h("input", { type: "checkbox", checked: on, disabled: locked, "data-opt": o.id });
   box.addEventListener("change", () => {
     const wasOn = !box.checked;
@@ -328,7 +353,7 @@ function optionRow(o, compact = false) {
   });
   const detail = o.state === "unavailable" ? o.note
     : o.state === "included" || o.state === "standard" ? o.note
-    : compact && o.recommended_reason ? o.recommended_reason : "";
+    : "";
   const rec = o.recommended && !compact ? `<span class="tag rec">Suggested</span>` : "";
   row.append(box, h("span", { class: "opt-name" }, `${esc(o.name)}${rec}${detail ? `<small>${esc(detail)}</small>` : ""}`),
     h("span", { class: "opt-price" }, o.state === "included" || o.state === "standard" ? "incl." : eur(o.price)));
@@ -357,11 +382,12 @@ function renderState(state) {
   if (!v) { els.config.innerHTML = `<p class="muted">Choose a model to start configuring.</p>`; return; }
   const b = v.budget;
   const pct = b.max ? Math.min(100, Math.round((v.total_price / b.max) * 100)) : 0;
+  const openCats = new Set([...els.config.querySelectorAll("details.opt-group[open]")].map((d) => d.dataset.cat));
   const sp = v.specs;
   const status = v.valid ? (v.unmet_requirements.length ? ["outline", "Misses a need"] : ["dark", "Valid"]) : ["outline", "Invalid"];
   els.config.innerHTML = `
     <div class="config-model">
-      <div class="tags"><span class="tag">${esc(BODY[sp.body] || sp.body)}</span><span class="tag">${esc(POWERTRAIN[sp.powertrain])}</span><span class="tag ${status[0]}">${status[1]}</span></div>
+      <p class="kicker">${esc(BODY[sp.body] || sp.body)} · ${esc(POWERTRAIN[sp.powertrain])} · <span class="status ${status[0] === "dark" ? "ok" : "warn"}">${status[1]}</span></p>
       <h3>${esc(v.model_name)}</h3>
       <div class="car">${carVisual(v.model_id, sp.body, v.model_name)}</div>
       <div class="config-price"><span>Total price</span><strong>${eur(v.total_price)}</strong></div>
@@ -389,8 +415,9 @@ function renderState(state) {
   const groups = {};
   v.catalog_options.forEach((o) => { (groups[o.category] ||= []).push(o); });
   for (const [cat, opts] of Object.entries(groups)) {
-    const box = h("details", { class: "opt-group", open: opts.some((o) => o.state === "selected" || o.recommended) || undefined },
-      `<summary>${esc(cat)}</summary>`);
+    const chosen = opts.filter((o) => o.state === "selected" || o.state === "included").length;
+    const box = h("details", { class: "opt-group", "data-cat": cat, open: openCats.has(cat) || undefined },
+      `<summary>${esc(cat)}${chosen ? `<span class="count">${chosen} selected</span>` : ""}</summary>`);
     opts.forEach((o) => box.append(optionRow(o)));
     els.config.append(box);
   }
