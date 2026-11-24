@@ -71,8 +71,10 @@ async function restoreSession() {
   }
 }
 
+const MODE_LABELS = { openai: "AI agent (OpenAI)", anthropic: "AI agent (Claude)", guided: "Guided mode (offline)" };
+
 function setMode(mode) {
-  els.mode.textContent = mode === "claude" ? "AI agent (Claude)" : "Guided mode (offline)";
+  els.mode.textContent = MODE_LABELS[mode] || mode;
   els.mode.className = "mode " + mode;
 }
 

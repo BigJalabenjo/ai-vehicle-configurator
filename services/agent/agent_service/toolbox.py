@@ -1,4 +1,4 @@
-"""Configurator tools shared by the Claude agent and the offline agent.
+"""Configurator tools shared by the LLM agent and the offline agent.
 
 Each tool mutates the session state only through the catalog service and
 returns a compact, JSON-able result for the model. UI components produced
@@ -358,7 +358,7 @@ class Toolbox:
             return ui.option_toggles(view, spec.option_ids or None, spec.title or "Suggested options")
         return ui.summary(view, self.state.requirements, self.state.assumptions)
 
-    # -- dispatcher used by the Claude agent -----------------------------------
+    # -- dispatcher used by the LLM agent --------------------------------------
 
     async def execute(self, name: str, raw_input: dict) -> dict:
         try:

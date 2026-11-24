@@ -14,7 +14,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from .catalog_client import CatalogClient, CatalogError, CatalogUnavailable
-from .claude_agent import ClaudeAgent, build_catalog_overview
+from .llm_agent import LLMAgent, build_catalog_overview, system_prompt
 from .config import Settings, settings
 from .orchestrator import Orchestrator, TurnRequest
 from .state import InMemorySessionStore
@@ -26,11 +26,11 @@ log = logging.getLogger("agent")
 class Runtime:
     """Lazily wires dependencies so the service starts even if the catalog is still booting."""
 
-    def __init__(self, catalog: CatalogClient | None = None, claude_client=None, cfg: Settings = settings):
+    def __init__(self, catalog: CatalogClient | None = None, llm_client=None, cfg: Settings = settings):
         self.cfg = cfg
         self.catalog = catalog or CatalogClient(cfg.catalog_url)
         self.sessions = InMemorySessionStore(cfg.session_ttl_s, cfg.max_sessions)
-        self._claude_client = claude_client
+        self._llm_client = llm_client  # injectable SDK client (tests)
         self._orchestrator: Orchestrator | None = None
         self._lock = asyncio.Lock()
 
@@ -38,13 +38,21 @@ class Runtime:
         if self._orchestrator is None:
             async with self._lock:
                 if self._orchestrator is None:
-                    claude = None
-                    if self.cfg.use_claude:
-                        overview = build_catalog_overview(await self.catalog.catalog())
-                        claude = ClaudeAgent(self.cfg, overview, client=self._claude_client)
-                    self._orchestrator = Orchestrator(self.catalog, claude)
-                    log.info("agent mode=%s model=%s", self._orchestrator.mode, self.cfg.llm_model if claude else "-")
+                    agent = None
+                    if self.cfg.provider:
+                        prompt = system_prompt(build_catalog_overview(await self.catalog.catalog()))
+                        agent = LLMAgent(self.cfg, make_provider(self.cfg, prompt, self._llm_client))
+                    self._orchestrator = Orchestrator(self.catalog, agent)
+                    log.info("agent mode=%s model=%s", self._orchestrator.mode, self.cfg.llm_model if agent else "-")
         return self._orchestrator
+
+
+def make_provider(cfg: Settings, prompt: str, client=None):
+    if cfg.provider == "anthropic":
+        from .providers.anthropic_provider import AnthropicProvider
+        return AnthropicProvider(cfg.llm_model, prompt, cfg.llm_effort, cfg.llm_timeout_s, cfg.llm_server_fallback, client)
+    from .providers.openai_provider import OpenAIProvider
+    return OpenAIProvider(cfg.llm_model, prompt, cfg.llm_effort, cfg.llm_timeout_s, client)
 
 
 def create_app(runtime: Runtime | None = None) -> FastAPI:
@@ -90,7 +98,7 @@ def create_app(runtime: Runtime | None = None) -> FastAPI:
         except (CatalogUnavailable, CatalogError):
             catalog_status = "unavailable"
         return {"status": "ok" if catalog_status == "ok" else "degraded", "catalog": catalog_status,
-                "mode": orch.mode if orch else ("claude" if rt.cfg.use_claude else "guided")}
+                "mode": orch.mode if orch else (rt.cfg.provider or "guided")}
 
     @app.post("/api/sessions", status_code=201)
     async def create_session():

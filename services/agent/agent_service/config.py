@@ -10,7 +10,10 @@ import os
 from dataclasses import dataclass, field
 from typing import Literal
 
-Mode = Literal["auto", "claude", "offline"]
+Mode = Literal["auto", "llm", "offline"]
+Provider = Literal["auto", "openai", "anthropic"]
+
+DEFAULT_MODELS = {"openai": "gpt-5.5", "anthropic": "claude-opus-5-5"}
 
 
 def _list(value: str) -> list[str]:
@@ -21,8 +24,9 @@ def _list(value: str) -> list[str]:
 class Settings:
     catalog_url: str = field(default_factory=lambda: os.getenv("CATALOG_URL", "http://localhost:8001"))
     agent_mode: Mode = field(default_factory=lambda: os.getenv("AGENT_MODE", "auto"))  # type: ignore[assignment]
-    llm_model: str = field(default_factory=lambda: os.getenv("LLM_MODEL", "claude-opus-5-5"))
-    llm_effort: str = field(default_factory=lambda: os.getenv("LLM_EFFORT", "medium"))
+    llm_provider: Provider = field(default_factory=lambda: os.getenv("LLM_PROVIDER", "auto"))  # type: ignore[assignment]
+    llm_model_override: str | None = field(default_factory=lambda: os.getenv("LLM_MODEL") or None)
+    llm_effort: str | None = field(default_factory=lambda: os.getenv("LLM_EFFORT") or None)
     llm_max_steps: int = field(default_factory=lambda: int(os.getenv("LLM_MAX_STEPS", "8")))
     llm_timeout_s: float = field(default_factory=lambda: float(os.getenv("LLM_TIMEOUT_S", "60")))
     llm_server_fallback: bool = field(default_factory=lambda: os.getenv("LLM_SERVER_FALLBACK", "true").lower() == "true")
@@ -32,16 +36,24 @@ class Settings:
     cors_origins: list[str] = field(default_factory=lambda: _list(os.getenv("CORS_ORIGINS", "http://localhost:8080")))
 
     @property
-    def claude_available(self) -> bool:
-        return bool(os.getenv("ANTHROPIC_API_KEY") or os.getenv("ANTHROPIC_AUTH_TOKEN"))
+    def provider(self) -> str | None:
+        """Which LLM provider to use, or None for guided (offline) mode.
+
+        auto: OpenAI if OPENAI_API_KEY is set, else Anthropic if ANTHROPIC_API_KEY is set, else guided.
+        """
+        if self.agent_mode == "offline":
+            return None
+        if self.llm_provider != "auto":
+            return self.llm_provider
+        if os.getenv("OPENAI_API_KEY"):
+            return "openai"
+        if os.getenv("ANTHROPIC_API_KEY") or os.getenv("ANTHROPIC_AUTH_TOKEN"):
+            return "anthropic"
+        return "openai" if self.agent_mode == "llm" else None
 
     @property
-    def use_claude(self) -> bool:
-        if self.agent_mode == "offline":
-            return False
-        if self.agent_mode == "claude":
-            return True
-        return self.claude_available
+    def llm_model(self) -> str:
+        return self.llm_model_override or DEFAULT_MODELS.get(self.provider or "openai", "gpt-5.5")
 
 
 settings = Settings()

@@ -1,7 +1,7 @@
 """Rule-based language understanding for the offline (no API key) mode.
 
 Deliberately simple and transparent: keyword and regex patterns that cover
-the demo journey and common phrasings. The Claude agent replaces this
+the demo journey and common phrasings. The LLM agent replaces this
 entirely when an API key is configured.
 """
 

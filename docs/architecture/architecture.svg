@@ -8,7 +8,7 @@
 <rect x="215" y="360" width="220" height="240" rx="10" fill="none" stroke="#8C4FFF" stroke-width="1.5" stroke-dasharray="6 4"/>
 <text x="227" y="380" font-size="13" font-weight="700" fill="#8C4FFF">Edge</text>
 <rect x="740" y="130" width="620" height="135" rx="10" fill="none" stroke="#01A88D" stroke-width="1.5" stroke-dasharray="6 4"/>
-<text x="752" y="150" font-size="13" font-weight="700" fill="#01A88D">Generative AI (managed)</text>
+<text x="752" y="150" font-size="13" font-weight="700" fill="#01A88D">Generative AI (provider behind an adapter)</text>
 <rect x="715" y="300" width="650" height="630" rx="10" fill="none" stroke="#00A4A6" stroke-width="1.5" stroke-dasharray="6 4"/>
 <text x="727" y="320" font-size="13" font-weight="700" fill="#00A4A6">VPC (private, 3 AZs)</text>
 <rect x="215" y="965" width="1120" height="130" rx="10" fill="none" stroke="#3F8624" stroke-width="1.5" stroke-dasharray="6 4"/>
@@ -75,12 +75,12 @@
 <text x="486" y="617" font-size="12" fill="#3B4450">sessions via signed token</text>
 <rect x="760" y="170" width="270" height="76" rx="8" fill="#E6F7F4" stroke="#01A88D" stroke-width="2"/>
 <rect x="760" y="170" width="6" height="76" rx="3" fill="#01A88D"/>
-<text x="776" y="192" font-size="14" font-weight="700" fill="#232F3E">Amazon Bedrock · Claude</text>
-<text x="776" y="211" font-size="12" fill="#3B4450">Tool use via VPC endpoint,</text>
-<text x="776" y="227" font-size="12" fill="#3B4450">in-region, no training on data</text>
+<text x="776" y="192" font-size="14" font-weight="700" fill="#232F3E">LLM provider (pluggable)</text>
+<text x="776" y="211" font-size="12" fill="#3B4450">Prototype: OpenAI API · Production:</text>
+<text x="776" y="227" font-size="12" fill="#3B4450">Amazon Bedrock via VPC endpoint</text>
 <rect x="1080" y="175" width="260" height="66" rx="8" fill="#E6F7F4" stroke="#01A88D" stroke-width="2"/>
 <rect x="1080" y="175" width="6" height="66" rx="3" fill="#01A88D"/>
-<text x="1096" y="197" font-size="14" font-weight="700" fill="#232F3E">Bedrock Guardrails</text>
+<text x="1096" y="197" font-size="14" font-weight="700" fill="#232F3E">Guardrails</text>
 <text x="1096" y="216" font-size="12" fill="#3B4450">PII redaction, denied topics,</text>
 <text x="1096" y="232" font-size="12" fill="#3B4450">prompt-attack filter</text>
 <rect x="740" y="360" width="260" height="106" rx="8" fill="#FFF3E8" stroke="#ED7100" stroke-width="2"/>
@@ -159,7 +159,7 @@
 <text x="1430" y="190" font-size="12.5" fill="#3B4450" xml:space="preserve">② Same-origin API; WAF + throttling</text>
 <text x="1430" y="208" font-size="12.5" fill="#3B4450" xml:space="preserve">③ Each turn is free text or a structured</text>
 <text x="1430" y="226" font-size="12.5" fill="#3B4450" xml:space="preserve">   UI action (card click, toggle, slider)</text>
-<text x="1430" y="244" font-size="12.5" fill="#3B4450" xml:space="preserve">④ Claude interprets needs, plans tool calls</text>
+<text x="1430" y="244" font-size="12.5" fill="#3B4450" xml:space="preserve">④ The LLM interprets needs, plans tool calls</text>
 <text x="1430" y="262" font-size="12.5" fill="#3B4450" xml:space="preserve">   and chooses adaptive UI components</text>
 <text x="1430" y="280" font-size="12.5" fill="#3B4450" xml:space="preserve">⑤ Prices, rules and compatibility only come</text>
 <text x="1430" y="298" font-size="12.5" fill="#3B4450" xml:space="preserve">   from the deterministic engine; the agent</text>
@@ -174,10 +174,10 @@
 <text x="1430" y="460" font-size="12.5" fill="#3B4450" xml:space="preserve">rule-based mode; retries with backoff;</text>
 <text x="1430" y="478" font-size="12.5" fill="#3B4450" xml:space="preserve">multi-AZ; health checks; autoscaling</text>
 <text x="1430" y="496" font-size="12.5" fill="#3B4450" xml:space="preserve">Privacy: no PII in prompts or logs,</text>
-<text x="1430" y="514" font-size="12.5" fill="#3B4450" xml:space="preserve">Guardrails PII filter, EU region</text>
+<text x="1430" y="514" font-size="12.5" fill="#3B4450" xml:space="preserve">PII guardrails, EU region</text>
 <text x="1430" y="532" font-size="12.5" fill="#3B4450" xml:space="preserve"></text>
 <text x="1430" y="550" font-size="12.5" fill="#3B4450" xml:space="preserve">Prototype mapping: nginx → CloudFront/S3;</text>
 <text x="1430" y="568" font-size="12.5" fill="#3B4450" xml:space="preserve">agent &amp; catalog containers → ECS;</text>
 <text x="1430" y="586" font-size="12.5" fill="#3B4450" xml:space="preserve">in-memory sessions → DynamoDB;</text>
-<text x="1430" y="604" font-size="12.5" fill="#3B4450" xml:space="preserve">Anthropic API → Bedrock</text>
+<text x="1430" y="604" font-size="12.5" fill="#3B4450" xml:space="preserve">OpenAI API → Bedrock (one adapter)</text>
 </svg>

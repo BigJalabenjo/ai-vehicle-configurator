@@ -2,7 +2,7 @@
 
 Used when no Anthropic credentials are configured, and as the fallback when
 the LLM is unavailable. It uses exactly the same tools and UI components as
-the Claude agent, with a fixed dialogue policy:
+the LLM agent, with a fixed dialogue policy:
 
 1. Understand -> 2. recommend with reasons -> 3. ask the single most useful
 missing question -> 4. configure -> 5. summarise.

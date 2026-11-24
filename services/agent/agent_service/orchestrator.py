@@ -4,7 +4,7 @@
   directly - instant, no LLM call.
 * Other UI actions (select model, slider, trade-off, removing a requirement)
   are applied deterministically first, then narrated by the agent.
-* If Claude is unavailable, the turn is answered by the guided agent instead,
+* If the LLM is unavailable, the turn is answered by the guided agent instead,
   so the customer journey never dead-ends.
 """
 
@@ -18,7 +18,7 @@ from pydantic import BaseModel, Field
 
 from . import ui
 from .catalog_client import CatalogClient
-from .claude_agent import ClaudeAgent, LLMUnavailable
+from .llm_agent import LLMAgent, LLMUnavailable
 from .offline_agent import OfflineAgent
 from .state import SessionState
 from .toolbox import Toolbox, ToolError
@@ -94,14 +94,14 @@ EXAMPLE_PROMPTS = [
 
 
 class Orchestrator:
-    def __init__(self, catalog: CatalogClient, claude: ClaudeAgent | None):
+    def __init__(self, catalog: CatalogClient, agent: LLMAgent | None):
         self.catalog = catalog
-        self.claude = claude
+        self.agent = agent
         self.offline = OfflineAgent()
 
     @property
     def mode(self) -> str:
-        return "claude" if self.claude else "guided"
+        return self.agent.name if self.agent else "guided"
 
     def greeting(self, state: SessionState) -> dict:
         message = {"role": "assistant", "text": GREETING,
@@ -110,7 +110,7 @@ class Orchestrator:
         return message
 
     async def handle(self, state: SessionState, req: TurnRequest) -> dict:
-        tb = Toolbox(self.catalog, state, error_notices=self.claude is not None)
+        tb = Toolbox(self.catalog, state, error_notices=self.agent is not None)
         mode = self.mode
         if req.action is not None:
             text, mode = await self._handle_action(tb, req.action)
@@ -137,9 +137,9 @@ class Orchestrator:
     # ------------------------------------------------------------------ text
 
     async def _handle_text(self, tb: Toolbox, text: str) -> tuple[str, str]:
-        if self.claude:
+        if self.agent:
             try:
-                return await self.claude.run(tb, text), "claude"
+                return await self.agent.run(tb, text), self.agent.name
             except LLMUnavailable as exc:
                 log.warning("LLM unavailable (%s); answering in guided mode", exc)
                 tb.components = [ui.notice("The AI assistant is temporarily unavailable - continuing in guided mode.", "warning")]
@@ -184,10 +184,10 @@ class Orchestrator:
         except ToolError as exc:
             return str(exc), self.mode
 
-        if self.claude:
+        if self.agent:
             try:
                 prompt = f"[UI] {ui_text} (already applied). Result: {json.dumps(result)[:4000]}"
-                return await self.claude.run(tb, prompt), "claude"
+                return await self.agent.run(tb, prompt), self.agent.name
             except LLMUnavailable as exc:
                 log.warning("LLM unavailable (%s); narrating action in guided mode", exc)
                 tb.components = [ui.notice("The AI assistant is temporarily unavailable - continuing in guided mode.", "warning")]
@@ -210,7 +210,7 @@ class Orchestrator:
             view = await tb.current_view()
             if not view:
                 raise ToolError("Pick a model first - then I can summarise your configuration.")
-            if self.claude:
+            if self.agent:
                 tb.components.append(ui.summary(view, tb.state.requirements, tb.state.assumptions))
             return "The customer asked for the summary; it is already displayed - add a short closing note", tb.summarize_view(view)
         raise ToolError("Unsupported action")

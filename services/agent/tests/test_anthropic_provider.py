@@ -1,4 +1,4 @@
-"""Claude-mode orchestration tested against a scripted fake Messages API (no network, no API key)."""
+"""Anthropic provider: agent loop tested against a scripted fake Messages API (no network, no API key)."""
 
 from __future__ import annotations
 
@@ -68,11 +68,11 @@ async def test_tool_loop_produces_grounded_ui(catalog_client):
             "tool_use"),
         message([{"type": "text", "text": "The i5 Touring is the strongest fit."}], "end_turn"),
     ])
-    async with make_client(catalog_client, mode="claude", claude_client=fake) as client:
+    async with make_client(catalog_client, mode="llm", provider="anthropic", llm_client=fake) as client:
         sid = await start(client)
         r = (await client.post(f"/api/sessions/{sid}/turn", json={"message": "family EV, 3 kids, 85k"})).json()
 
-    assert r["mode"] == "claude"
+    assert r["mode"] == "anthropic"
     assert r["message"]["text"] == "The i5 Touring is the strongest fit."
     types = [c["type"] for c in r["message"]["components"]]
     assert types == ["model_cards", "question"]
@@ -95,7 +95,7 @@ async def test_invalid_tool_input_is_returned_as_error_for_self_correction(catal
         message([tool("update_requirements", {"patch": {"budget_max": -1}})], "tool_use"),
         message([{"type": "text", "text": "Sorry - let me check the catalog."}], "end_turn"),
     ])
-    async with make_client(catalog_client, mode="claude", claude_client=fake) as client:
+    async with make_client(catalog_client, mode="llm", provider="anthropic", llm_client=fake) as client:
         sid = await start(client)
         r = (await client.post(f"/api/sessions/{sid}/turn", json={"message": "hi"})).json()
     assert r["message"]["components"] == []
@@ -110,7 +110,7 @@ async def test_conflict_from_tool_is_rendered_automatically(catalog_client):
                  tool("change_option", {"action": "add", "option_id": "seats_sport"})], "tool_use"),
         message([{"type": "text", "text": "Sport seats would break the Travel & Comfort Package."}], "end_turn"),
     ])
-    async with make_client(catalog_client, mode="claude", claude_client=fake) as client:
+    async with make_client(catalog_client, mode="llm", provider="anthropic", llm_client=fake) as client:
         sid = await start(client)
         r = (await client.post(f"/api/sessions/{sid}/turn", json={"message": "i5 with travel package and sport seats"})).json()
     assert [c["type"] for c in r["message"]["components"]] == ["conflict"]
@@ -120,7 +120,7 @@ async def test_conflict_from_tool_is_rendered_automatically(catalog_client):
 async def test_llm_outage_falls_back_to_guided_mode(catalog_client):
     outage = anthropic.APIConnectionError(request=httpx2.Request("POST", "https://api.anthropic.com/v1/messages"))
     fake = FakeAnthropic([outage])
-    async with make_client(catalog_client, mode="claude", claude_client=fake) as client:
+    async with make_client(catalog_client, mode="llm", provider="anthropic", llm_client=fake) as client:
         sid = await start(client)
         r = (await client.post(f"/api/sessions/{sid}/turn", json={
             "message": "family car, electric, three children, budget 85,000"})).json()
@@ -131,7 +131,7 @@ async def test_llm_outage_falls_back_to_guided_mode(catalog_client):
 
 async def test_refusal_falls_back(catalog_client):
     fake = FakeAnthropic([message([], "refusal")])
-    async with make_client(catalog_client, mode="claude", claude_client=fake) as client:
+    async with make_client(catalog_client, mode="llm", provider="anthropic", llm_client=fake) as client:
         sid = await start(client)
         r = (await client.post(f"/api/sessions/{sid}/turn", json={"message": "electric car under 60k"})).json()
     assert r["mode"] == "guided"
@@ -139,7 +139,7 @@ async def test_refusal_falls_back(catalog_client):
 
 async def test_ui_action_is_applied_before_llm_narrates(catalog_client):
     fake = FakeAnthropic([message([{"type": "text", "text": "Nice pick!"}], "end_turn")])
-    async with make_client(catalog_client, mode="claude", claude_client=fake) as client:
+    async with make_client(catalog_client, mode="llm", provider="anthropic", llm_client=fake) as client:
         sid = await start(client)
         r = (await client.post(f"/api/sessions/{sid}/turn",
                                json={"action": {"type": "select_model", "model_id": "ix_xdrive45"}})).json()

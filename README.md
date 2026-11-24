@@ -37,26 +37,27 @@ The prototype has two agent modes. The badge in the top-right corner shows which
 
 | Mode | When | What answers |
 |---|---|---|
-| **AI agent (Claude)** | `ANTHROPIC_API_KEY` is set | Claude (`claude-opus-5-5`) drives the conversation through tool calls into the rules engine |
+| **AI agent (OpenAI or Claude)** | `OPENAI_API_KEY` or `ANTHROPIC_API_KEY` is set | An LLM (default `gpt-5.5` or `claude-opus-5-5`) drives the conversation through tool calls into the rules engine |
 | **Guided mode (offline)** | No key (default) | A deterministic, rule-based agent uses the *same* tools and UI components |
 
-To enable Claude mode, put your key in a local `.env` file. `.env` is git-ignored, so keys never enter the repository.
+To enable AI mode, put **one** key in a local `.env` file. `.env` is git-ignored, so keys never enter the repository.
 
 ```bash
 cp .env.example .env
-# edit .env and set ANTHROPIC_API_KEY=...
+# edit .env and set OPENAI_API_KEY=... (or ANTHROPIC_API_KEY=...)
 docker compose up --build
 ```
 
-If Claude is unreachable or rate-limited, the app switches to guided mode for that turn and shows a notice, so the journey never dead-ends.
+If the LLM is unreachable, rate-limited or out of quota, the app switches to guided mode for that turn and shows a notice, so the journey never dead-ends.
 
 Optional settings (in `.env` or the environment):
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `AGENT_MODE` | `auto` | `auto` (Claude if a key exists), `claude`, or `offline` |
-| `LLM_MODEL` | `claude-opus-5-5` | Claude model ID |
-| `LLM_EFFORT` | `medium` | Reasoning effort (`low`…`max`); `low` is faster and cheaper |
+| `LLM_PROVIDER` | `auto` | `auto` (whichever key is set, OpenAI first), `openai` or `anthropic` |
+| `AGENT_MODE` | `auto` | `auto` (AI if a key is set), `llm`, or `offline` |
+| `LLM_MODEL` | provider default | `gpt-5.5` (OpenAI) or `claude-opus-5-5` (Anthropic); any tool-calling model works |
+| `LLM_EFFORT` | unset | Reasoning effort (`low`/`medium`/`high`); leave empty for non-reasoning models |
 
 ## 2. Demo script (about 5 minutes)
 
@@ -81,7 +82,8 @@ This works in either mode. The wording below matches guided mode.
 ```
 Browser (vanilla JS SPA)  ──/api──▶  agent service (FastAPI)  ──HTTP──▶  catalog service (FastAPI)
      nginx :8080                       orchestrator                       rules engine, pricing,
-                                       ├─ Claude agent (tool loop)        recommender, trade-offs
+                                       ├─ LLM agent (tool loop)           recommender, trade-offs
+                                       │   └─ OpenAI | Anthropic adapter
                                        ├─ guided agent (fallback)         catalog.json (validated)
                                        ├─ toolbox (7 tools)
                                        └─ UI component builders
@@ -95,7 +97,7 @@ Each of the three containers has one job.
 
 ### Agent design
 
-**Grounding: the LLM decides, the engine computes.** Claude never produces prices, specs or validity. It calls tools, and the rules engine answers:
+**Grounding: the LLM decides, the engine computes.** The LLM never produces prices, specs or validity. It calls tools, and the rules engine answers:
 
 | Tool | Purpose |
 |---|---|
@@ -117,12 +119,12 @@ Each of the three containers has one job.
 * Option toggles are applied by the rules engine directly, with no LLM round-trip, so they're instant and cheap. The LLM is told about them on its next turn.
 * Card clicks, the slider, accepting a trade-off and removing a requirement are applied deterministically first, then narrated by the agent.
 
-**Claude integration** (`agent_service/claude_agent.py`). This uses the Anthropic Messages API with a manual tool loop that we host. We own the loop because every tool call must go through our rules engine, the loop needs a hard step limit (`LLM_MAX_STEPS`), and state lives in our session store. Other details:
-* Adaptive thinking; effort is configurable.
-* The system prompt plus the catalog overview is prompt-cached.
-* Server-side refusal fallback is enabled.
-* Typed error handling covers rate limits, auth, 5xx and connection errors. Any failure, or a refusal, triggers the guided-mode fallback.
-* Tool inputs are validated with Pydantic. Invalid inputs return `is_error` tool results, so the model can correct itself.
+**LLM integration** (`agent_service/llm_agent.py` + `agent_service/providers/`). The tool loop is provider-neutral and hosted by us. We own the loop because every tool call must go through our rules engine, the loop needs a hard step limit (`LLM_MAX_STEPS`), and state lives in our session store. A small adapter per provider translates requests, messages and errors:
+* **OpenAI** (`openai_provider.py`): Chat Completions with function calling; the tool schemas are shared with the Anthropic adapter.
+* **Anthropic** (`anthropic_provider.py`): Messages API with tool use, prompt caching of the system prompt, and server-side refusal fallback.
+* Typed error handling covers rate limits and quota, auth, 5xx and connection errors. Any failure, a refusal or a content filter triggers the guided-mode fallback.
+* Tool inputs are validated with Pydantic, and malformed JSON arguments are caught. Either way the model gets an error result and can correct itself.
+* Adding another provider (e.g. Bedrock or Azure OpenAI) means writing one adapter with four methods.
 
 ### Error handling and resilience
 
@@ -142,7 +144,7 @@ Each of the three containers has one job.
 ### Observability
 
 * A request ID (`x-request-id`) is generated at nginx and propagated web → agent → catalog. Each service logs one line per request with its latency.
-* Each Claude step logs stop reason, input/output tokens, cache-read tokens and latency.
+* Each LLM step logs provider, model, stop reason, token usage and latency.
 * `GET /api/health` reports catalog reachability and the active mode. Containers have Docker health checks, and Compose starts services in dependency order.
 
 ## 4. Catalog and configuration rules
@@ -169,7 +171,7 @@ Files: [`docs/architecture/architecture.png`](docs/architecture/architecture.png
 |---|---|---|
 | Edge | CloudFront + WAF/Shield, S3 for the SPA, API Gateway (throttling, validation, optional Cognito JWT) | Global latency, DDoS and bot protection, rate limits per client |
 | Compute | Two ECS Fargate services: agent orchestrator and configuration/catalog service, in private subnets across 3 AZs | Same containers as the prototype. Stateless, so they autoscale independently: LLM-bound vs. CPU-bound |
-| LLM | Amazon Bedrock (Claude) through a VPC endpoint, in-region, with Bedrock Guardrails | Data residency, no internet egress for prompts, PII filtering, prompt-attack filter |
+| LLM | Pluggable provider behind one adapter interface. The prototype calls the OpenAI API (or Anthropic). In production, the preferred option is Amazon Bedrock through a VPC endpoint, in-region, with Bedrock Guardrails; calling OpenAI directly goes through a NAT gateway with an egress allow-list | Data residency, no open internet egress for prompts, PII filtering, prompt-attack filter; the provider can change without touching the agent |
 | State | DynamoDB sessions with TTL, KMS-encrypted | Serverless scale. The prototype's `SessionStore` protocol is the seam |
 | Product data | Aurora (versioned catalog) fed by a sync job from enterprise PIM, pricing and buildability systems; integrity checks before publish | The rules engine stays deterministic and testable; catalog versions can be rolled back |
 | Integration | EventBridge `configuration.completed` (with consent) → dealer, order or CRM systems | Loose coupling; the hand-over is auditable |
@@ -183,13 +185,14 @@ The tests need no Docker and no API key. They run the agent against the **real**
 
 ```bash
 make dev-install     # creates .venv with pinned dependencies
-make test            # 28 catalog tests + 11 agent tests
+make test            # 28 catalog tests + 21 agent tests
 ```
 
 * **Catalog tests** (`services/catalog/tests`): every rule type, conflicts and resolutions, invalid options, savings, model switching, recommendation ranking, trade-offs for unsatisfiable needs, API error codes, and the catalog integrity check.
 * **Agent tests** (`services/agent/tests`):
   * The full demo journey in guided mode.
-  * Claude mode against a scripted fake Messages API. This covers the tool loop, grounded UI hydration, invalid tool input becoming `is_error` for self-correction, automatic conflict cards, outage and refusal fallback, and UI actions applied before narration.
+  * AI mode against scripted fake OpenAI and Anthropic APIs. This covers the tool loop, grounded UI hydration, invalid or malformed tool input returned as errors for self-correction, automatic conflict cards, outage, refusal and content-filter fallback, valid history across turns, and UI actions applied before narration.
+  * Provider auto-selection from the configured keys.
 
 To run the services without Docker:
 
@@ -219,11 +222,11 @@ The catalog service is internal. `GET /v1/catalog`, `POST /v1/recommendations`, 
 ## 8. Limitations and next steps
 
 * **In-memory sessions.** A restart drops sessions; the client then starts a new one. Next step: a DynamoDB or Redis implementation of `SessionStore`.
-* **Guided-mode language understanding is regex-based.** It covers the demo phrasings and common variants, in English only. Claude mode handles free language and replies in the customer's language.
-* **No streaming.** Claude turns take a few seconds. Streaming the text, then appending components, would improve perceived latency.
+* **Guided-mode language understanding is regex-based.** It covers the demo phrasings and common variants, in English only. AI mode handles free language and replies in the customer's language.
+* **No streaming.** AI turns take a few seconds. Streaming the text, then appending components, would improve perceived latency.
 * **Evaluation.** Add an offline eval set of personas, then score requirement extraction, question count, and whether the final configuration is valid and within budget. Track the results per model and prompt version.
 * **Catalog depth.** No trims, engine variants, regional pricing, lead times or images yet; the schema extends naturally.
-* **Not verified against the live Claude API in this repository's tests**, by design: there are no keys in CI. Live use needs `ANTHROPIC_API_KEY`.
+* **The test suite doesn't call a live LLM**, by design: there are no keys in CI. Live use needs `OPENAI_API_KEY` or `ANTHROPIC_API_KEY`.
 
 ---
 

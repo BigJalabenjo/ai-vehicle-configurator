@@ -24,9 +24,10 @@ def catalog_client() -> CatalogClient:
     return CatalogClient("http://catalog", transport=httpx.ASGITransport(app=catalog_app))
 
 
-def make_client(catalog_client: CatalogClient, mode: str = "offline", claude_client=None) -> httpx.AsyncClient:
-    cfg = Settings(agent_mode=mode)  # type: ignore[arg-type]
-    app = create_app(Runtime(catalog=catalog_client, claude_client=claude_client, cfg=cfg))
+def make_client(catalog_client: CatalogClient, mode: str = "offline", provider: str = "auto",
+                llm_client=None) -> httpx.AsyncClient:
+    cfg = Settings(agent_mode=mode, llm_provider=provider)  # type: ignore[arg-type]
+    app = create_app(Runtime(catalog=catalog_client, llm_client=llm_client, cfg=cfg))
     return httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://agent")
 
 

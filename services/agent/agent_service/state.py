@@ -28,7 +28,7 @@ class SessionState(BaseModel):
     asked: list[str] = Field(default=[], description="Clarification topics already asked (avoid repeats)")
     evaluations: dict[str, dict] = Field(default={}, description="Latest model evaluations by id (UI hydration)")
     last_tradeoffs: list[dict] = []
-    llm_history: list[dict[str, Any]] = Field(default=[], description="Messages API history (Claude mode)")
+    llm_history: list[dict[str, Any]] = Field(default=[], description="Provider-native LLM history (AI mode)")
     ui_events: list[str] = Field(default=[], description="UI actions not yet seen by the LLM")
     transcript: list[dict[str, Any]] = Field(default=[], description="Rendered conversation, for reloads")
     turns: int = 0

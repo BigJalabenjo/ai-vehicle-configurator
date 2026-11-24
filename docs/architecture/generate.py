@@ -33,8 +33,8 @@ NODES = {
     "s3web": ("Amazon S3", "Static web client (OAC)", 230, 520, 190, 60, "data"),
     "apigw": ("Amazon API Gateway", "HTTP API: auth, throttling,\nrequest validation", 470, 390, 200, 76, "edge"),
     "cognito": ("Amazon Cognito", "Optional sign-in; anonymous\nsessions via signed token", 470, 560, 200, 76, "security"),
-    "bedrock": ("Amazon Bedrock · Claude", "Tool use via VPC endpoint,\nin-region, no training on data", 760, 170, 270, 76, "ai"),
-    "guard": ("Bedrock Guardrails", "PII redaction, denied topics,\nprompt-attack filter", 1080, 175, 260, 66, "ai"),
+    "bedrock": ("LLM provider (pluggable)", "Prototype: OpenAI API · Production:\nAmazon Bedrock via VPC endpoint", 760, 170, 270, 76, "ai"),
+    "guard": ("Guardrails", "PII redaction, denied topics,\nprompt-attack filter", 1080, 175, 260, 66, "ai"),
     "agent": ("Agent Orchestrator", "ECS Fargate · autoscaling\nLLM tool loop, guardrails,\nadaptive-UI composer, guided fallback", 740, 360, 260, 106, "compute"),
     "catalog": ("Configuration & Catalog Service", "ECS Fargate · autoscaling\nrules engine, pricing,\nrecommendation & trade-offs", 1080, 360, 260, 106, "compute"),
     "ddb": ("Amazon DynamoDB", "Session state & conversation\n(TTL, KMS-encrypted)", 740, 560, 260, 70, "data"),
@@ -54,7 +54,7 @@ NODES = {
 GROUPS = [  # (label, x, y, w, h, colour)
     ("AWS Cloud · eu-central-1 (EU data residency)", 200, 110, 1200, 1000, "#232F3E"),
     ("Edge", 215, 360, 220, 240, "#8C4FFF"),
-    ("Generative AI (managed)", 740, 130, 620, 135, "#01A88D"),
+    ("Generative AI (provider behind an adapter)", 740, 130, 620, 135, "#01A88D"),
     ("VPC (private, 3 AZs)", 715, 300, 650, 630, "#00A4A6"),
     ("Observability (all services)", 215, 965, 1120, 130, "#3F8624"),
 ]
@@ -82,7 +82,7 @@ NOTES = [
     "② Same-origin API; WAF + throttling",
     "③ Each turn is free text or a structured",
     "   UI action (card click, toggle, slider)",
-    "④ Claude interprets needs, plans tool calls",
+    "④ The LLM interprets needs, plans tool calls",
     "   and chooses adaptive UI components",
     "⑤ Prices, rules and compatibility only come",
     "   from the deterministic engine; the agent",
@@ -97,12 +97,12 @@ NOTES = [
     "rule-based mode; retries with backoff;",
     "multi-AZ; health checks; autoscaling",
     "Privacy: no PII in prompts or logs,",
-    "Guardrails PII filter, EU region",
+    "PII guardrails, EU region",
     "",
     "Prototype mapping: nginx → CloudFront/S3;",
     "agent & catalog containers → ECS;",
     "in-memory sessions → DynamoDB;",
-    "Anthropic API → Bedrock",
+    "OpenAI API → Bedrock (one adapter)",
 ]
 
 
