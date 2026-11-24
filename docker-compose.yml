@@ -24,6 +24,9 @@ services:
       LLM_EFFORT: ${LLM_EFFORT:-}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      APP_PASSWORD: ${APP_PASSWORD:-}
+      APP_SECRET: ${APP_SECRET:-}
+      AUTH_TTL_HOURS: ${AUTH_TTL_HOURS:-12}
       CORS_ORIGINS: http://localhost:8080
     expose: ["8000"]
     restart: unless-stopped

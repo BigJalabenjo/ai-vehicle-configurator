@@ -58,6 +58,18 @@ Optional settings (in `.env` or the environment):
 | `AGENT_MODE` | `auto` | `auto` (AI if a key is set), `llm`, or `offline` |
 | `LLM_MODEL` | provider default | `gpt-5.5` (OpenAI) or `claude-opus-5-5` (Anthropic); any tool-calling model works |
 | `LLM_EFFORT` | unset | Reasoning effort (`low`/`medium`/`high`); leave empty for non-reasoning models |
+| `APP_PASSWORD` | unset | Shared access password. When set, visitors must sign in first (see below); unset = open |
+| `APP_SECRET` | random | Secret for signing session cookies (`openssl rand -hex 32`); keeps sign-ins valid across restarts |
+| `AUTH_TTL_HOURS` | `12` | How long a sign-in lasts |
+
+### Password protection (for publishing)
+
+Set `APP_PASSWORD` (and `APP_SECRET`) in `.env` and restart. Every page then redirects to a sign-in page until the correct password is entered.
+
+* **The password never enters the repository.** It is read from the environment, compared in constant time, and wrong attempts are slowed down. nginx also rate-limits sign-in attempts to 10 per minute per IP.
+* **A successful sign-in sets a signed, HTTP-only, `SameSite=Strict` session cookie** valid for `AUTH_TTL_HOURS`. The cookie is marked `Secure` when the app is reached over HTTPS, including behind a TLS proxy that sends `X-Forwarded-Proto`. Changing the password signs everyone out.
+* **Protection is enforced twice:** nginx checks the session before serving pages and vehicle photos (`auth_request`), and the agent API rejects unauthenticated calls itself. Only the sign-in page, styles, logo/fonts, `/api/auth/*` and `/api/health` are public.
+* **Serve it over HTTPS when you publish** (e.g. behind a reverse proxy or a load balancer with TLS), so the password and cookie are never sent in clear text.
 
 ## 2. Demo script (about 5 minutes)
 

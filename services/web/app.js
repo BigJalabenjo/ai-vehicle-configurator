@@ -8,6 +8,7 @@ const els = {
   messages: $("#messages"), scroll: $("#scroll"), form: $("#composer"), input: $("#input"), send: $("#send"),
   mode: $("#mode"), needs: $("#needs"), assumptions: $("#assumptions"),
   assumptionsBox: $("#assumptions-box"), newSession: $("#new-session"),
+  signOut: $("#sign-out"),
   stage: $("#stage"), chatMin: $("#chat-min"), fab: $("#chat-fab"), needsBar: $("#needs-bar"),
 };
 
@@ -69,6 +70,10 @@ async function api(path, options = {}) {
     headers: { "content-type": "application/json" }, ...options,
   });
   const body = await res.json().catch(() => ({}));
+  if (res.status === 401 && !path.startsWith("/auth/")) {
+    location.replace("/login.html");  // session expired or signed out elsewhere
+    throw new Error("Please sign in.");
+  }
   if (!res.ok) {
     const err = new Error(typeof body.detail === "string" ? body.detail : `Request failed (${res.status})`);
     err.status = res.status;
@@ -113,25 +118,30 @@ function setMode(mode) {
   els.mode.className = "mode " + mode;
 }
 
-async function send(payload, echo) {
+async function send(payload, echo, { silent = false } = {}) {
   if (busy) return;
   busy = true;
   setBusy(true);
-  if (echo) renderMessage({ role: "user", text: echo, components: [] });
-  const typing = showTyping();
+  if (echo && !silent) renderMessage({ role: "user", text: echo, components: [] });
+  const typing = silent ? null : showTyping();
   try {
     const body = await api(`/sessions/${sessionId}/turn`, { method: "POST", body: JSON.stringify(payload) });
-    typing.remove();
+    typing?.remove();
     setMode(body.mode);
-    renderMessage(body.message);
+    if (body.message) renderMessage(body.message);
     renderState(body.state);
-    if (chatMinimized) {
+    if (body.feedback) showFeedback(body.feedback);
+    // A conflict caused via the chat is resolved in the same dialog as one caused on the stage.
+    const chatConflict = body.message?.components.find((c) => c.type === "conflict");
+    if (chatConflict && layout === "configure") openConflict(chatConflict);
+    if (chatMinimized && body.message) {
       // Replies that need a decision should not go unnoticed behind the minimized assistant.
-      const needsAttention = body.message.components.some((c) => ["conflict", "notice", "question", "summary"].includes(c.type));
+      const needsAttention = body.message.components.some((c) => ["notice", "question", "summary"].includes(c.type));
       if (needsAttention) setChatMinimized(false); else els.fab.classList.add("has-new");
     }
   } catch (err) {
-    typing.remove();
+    typing?.remove();
+    if (silent) { toast(err.message, "error"); return; }
     if (err.status === 404) {
       renderError("Your session expired. Starting a new one…");
       await startSession();
@@ -146,6 +156,9 @@ async function send(payload, echo) {
 
 const say = (text) => send({ message: text }, text);
 const act = (action, echo) => send({ action }, echo);
+// Option changes are applied by the rules engine and shown on the stage, not in the chat.
+const changeOption = (op, optionId, force = false) =>
+  send({ action: { type: "change_option", op, option_id: optionId, force } }, null, { silent: true });
 
 function setBusy(on) {
   els.send.disabled = on;
@@ -306,13 +319,16 @@ const COMPONENTS = {
   },
 
   conflict(c) {
+    if (layout === "configure") {
+      return h("div", { class: "comp notice warning" }, `This combination isn't possible: ${esc(c.message)}`);
+    }
     const el = h("div", { class: "comp conflict" }, `<p><strong>This combination isn't possible.</strong> ${esc(c.message)}</p>`);
     const row = h("div", { class: "choices" });
     c.resolutions.forEach((r) => row.append(h("button", {
       class: r.change ? "btn primary small" : "btn secondary small",
       onclick: () => {
         markDone(el);
-        if (r.change) act({ type: "change_option", op: r.change.action, option_id: r.change.option_id, force: r.change.force }, r.label);
+        if (r.change) changeOption(r.change.action, r.change.option_id, r.change.force);
         else renderMessage({ role: "user", text: r.label, components: [] });
       },
     }, esc(r.label))));
@@ -357,7 +373,7 @@ function optionRow(o, compact = false) {
   box.addEventListener("change", () => {
     const wasOn = !box.checked;
     box.checked = wasOn; // the server is the source of truth; state is re-synced from the response
-    act({ type: "change_option", op: wasOn ? "remove" : "add", option_id: o.id }, `${wasOn ? "Remove" : "Add"} ${o.name}`);
+    changeOption(wasOn ? "remove" : "add", o.id);
   });
   const detail = o.state === "unavailable" ? o.note
     : o.state === "included" || o.state === "standard" ? o.note
@@ -384,6 +400,7 @@ function renderNeeds(container, state, removable = true) {
 }
 
 function renderState(state) {
+  lastState = state;
   renderNeeds(els.needs, state);
   els.needsBar.hidden = !state.requirements.length;
   els.assumptionsBox.hidden = !state.assumptions.length;
@@ -501,7 +518,8 @@ function renderStage(v, state) {
   };
   for (const cat of cats) {
     const chosen = groups[cat].filter((o) => o.state === "selected" || o.state === "included").length;
-    tabs.append(h("button", { type: "button", role: "tab", "data-cat": cat, onclick: () => showCat(cat) },
+    const flagged = groups[cat].some((o) => conflictIds.has(o.id));
+    tabs.append(h("button", { type: "button", role: "tab", "data-cat": cat, class: flagged ? "conflicting" : "", onclick: () => showCat(cat) },
       `${esc(cat)}${chosen ? `<span class="count">${chosen}</span>` : ""}`));
   }
   showCat(activeCat);
@@ -515,17 +533,77 @@ function optionTile(o) {
   const locked = o.state === "standard" || o.state === "included";
   const on = o.state === "selected" || locked;
   const note = o.state === "unavailable" || locked ? o.note : "";
+  const marks = `${conflictIds.has(o.id) ? " conflicting" : ""}${flashIds.has(o.id) ? " flash" : ""}`;
   const tile = h("button", {
-    type: "button", class: `tile ${o.state}${on ? " on" : ""}`, disabled: locked || undefined,
+    type: "button", class: `tile ${o.state}${on ? " on" : ""}${marks}`, disabled: locked || undefined, "data-opt": o.id,
     title: [o.recommended_reason, o.description].filter(Boolean).join(" · "), "aria-pressed": String(on),
   }, `<span class="tile-check" aria-hidden="true"></span>
      <span class="tile-name">${esc(o.name)}${o.recommended && !on ? `<span class="tag rec">Suggested</span>` : ""}</span>
      ${note ? `<span class="tile-note">${esc(note)}</span>` : ""}
      <span class="tile-price">${locked ? "incl." : eur(o.price)}</span>`);
   tile.addEventListener("click", () => {
-    act({ type: "change_option", op: on ? "remove" : "add", option_id: o.id }, `${on ? "Remove" : "Add"} ${o.name}`);
+    changeOption(on ? "remove" : "add", o.id);
   });
   return tile;
+}
+
+// ------------------------------------------------------------------ option-change feedback (stage)
+
+let conflictIds = new Set();   // options involved in an open conflict (outlined on the stage)
+let flashIds = new Set();      // options that just changed (brief highlight)
+let lastState = null;
+
+function showFeedback(fb) {
+  if (fb.status === "conflict" && fb.conflict) { openConflict(fb.conflict); return; }
+  if (fb.status === "rejected") { toast(fb.error || "That change isn't possible.", "warning"); return; }
+  if (fb.status === "noop") { toast(fb.notes.join(" "), "info"); return; }
+  // Short confirmation: skip items that simply went with a removed package, drop the reasons.
+  const lines = fb.notes
+    .filter((n) => !/: comes with |would replace/.test(n))
+    .map((n) => n.replace(/^(Removed [^:]+):.*$/, "$1."));
+  toast(lines.join(" ") || "Updated.", "ok");
+  flashIds = new Set(fb.changed);
+  rerenderStage();
+  setTimeout(() => { flashIds = new Set(); rerenderStage(); }, 1400);
+}
+
+function rerenderStage() {
+  if (lastState?.configuration && layout === "configure") renderStage(lastState.configuration, lastState);
+}
+
+function openConflict(c) {
+  document.querySelector(".dialog-backdrop")?.remove();
+  conflictIds = new Set(c.option_ids || []);
+  // Show the tab of the option that caused the conflict, so its tile is visibly outlined.
+  const trigger = lastState?.configuration?.catalog_options.find((o) => o.id === (c.option_ids || [])[0]);
+  if (trigger) activeCat = trigger.category;
+  rerenderStage();
+  const close = () => { backdrop.remove(); conflictIds = new Set(); rerenderStage(); document.removeEventListener("keydown", onKey); };
+  const onKey = (e) => { if (e.key === "Escape") close(); };
+  const backdrop = h("div", { class: "dialog-backdrop" });
+  const dialog = h("div", { class: "dialog", role: "alertdialog", "aria-modal": "true", "aria-labelledby": "dlg-title" },
+    `<p class="dialog-kicker">Conflict</p><h2 id="dlg-title">This combination isn't possible</h2><p>${esc(c.message)}</p>`);
+  const row = h("div", { class: "dialog-actions" });
+  c.resolutions.forEach((r) => row.append(h("button", {
+    type: "button", class: `btn ${r.change ? "primary" : "secondary"}`,
+    onclick: () => { close(); if (r.change) changeOption(r.change.action, r.change.option_id, r.change.force); },
+  }, esc(r.label))));
+  dialog.append(row);
+  backdrop.append(dialog);
+  backdrop.addEventListener("click", (e) => { if (e.target === backdrop) close(); });
+  document.addEventListener("keydown", onKey);
+  document.body.append(backdrop);
+  row.querySelector("button")?.focus();
+}
+
+let toastTimer = null;
+function toast(text, level = "info") {
+  let el = document.querySelector(".toast");
+  if (!el) { el = h("div", { class: "toast", role: "status", "aria-live": "polite" }); document.body.append(el); }
+  el.className = `toast ${level} show`;
+  el.textContent = text;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.remove("show"), level === "warning" || level === "error" ? 6000 : 4000);
 }
 
 // ------------------------------------------------------------------ wiring
@@ -542,6 +620,12 @@ els.input.addEventListener("keydown", (e) => {
 });
 els.chatMin.addEventListener("click", () => setChatMinimized(true));
 els.fab.addEventListener("click", () => setChatMinimized(false));
+fetch("/api/auth/status").then((r) => r.json()).then((s) => { els.signOut.hidden = !s.enabled; }).catch(() => {});
+els.signOut.addEventListener("click", async () => {
+  await fetch("/api/auth/logout", { method: "POST" }).catch(() => {});
+  try { localStorage.removeItem("sessionId"); } catch { /* storage unavailable */ }
+  location.replace("/login.html");
+});
 els.newSession.addEventListener("click", () => { if (!busy) startSession().catch((e) => renderError(e.message)); });
 
 // Optional brand assets: assets/manifest.json lists what exists (generated at image build time).

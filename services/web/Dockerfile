@@ -1,6 +1,6 @@
 FROM nginx:1.27-alpine
 COPY nginx.conf /etc/nginx/conf.d/default.conf
-COPY index.html app.js styles.css /usr/share/nginx/html/
+COPY index.html app.js login.html login.js styles.css /usr/share/nginx/html/
 # Optional brand assets (logo, fonts); see assets/README.md
 COPY assets /usr/share/nginx/html/assets
 # Make the files readable by nginx, drop non-assets, and list the brand files that are present,

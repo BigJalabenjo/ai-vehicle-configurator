@@ -34,6 +34,10 @@ class Settings:
     max_sessions: int = field(default_factory=lambda: int(os.getenv("MAX_SESSIONS", "1000")))
     max_message_chars: int = field(default_factory=lambda: int(os.getenv("MAX_MESSAGE_CHARS", "2000")))
     cors_origins: list[str] = field(default_factory=lambda: _list(os.getenv("CORS_ORIGINS", "http://localhost:8080")))
+    # Shared-password protection (see auth.py). Off when APP_PASSWORD is empty.
+    app_password: str | None = field(default_factory=lambda: os.getenv("APP_PASSWORD") or None)
+    app_secret: str | None = field(default_factory=lambda: os.getenv("APP_SECRET") or None)
+    auth_ttl_h: float = field(default_factory=lambda: float(os.getenv("AUTH_TTL_HOURS", "12")))
 
     @property
     def provider(self) -> str | None:

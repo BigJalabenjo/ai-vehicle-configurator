@@ -13,6 +13,7 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
+from . import auth as auth_mod
 from .catalog_client import CatalogClient, CatalogError, CatalogUnavailable
 from .llm_agent import LLMAgent, build_catalog_overview, system_prompt
 from .config import Settings, settings
@@ -65,6 +66,16 @@ def create_app(runtime: Runtime | None = None) -> FastAPI:
 
     app = FastAPI(title="Vehicle Configurator Agent", version="1.0.0", lifespan=lifespan)
     app.state.runtime = rt
+    auth = auth_mod.Auth(rt.cfg)
+    log.info("password protection %s", "enabled" if auth.enabled else "disabled (APP_PASSWORD not set)")
+    app.include_router(auth_mod.router(auth))
+
+    @app.middleware("http")
+    async def require_login(request: Request, call_next):
+        # Defence in depth: the API enforces sign-in itself, independent of the web server.
+        if auth.enabled and not auth.is_public(request.url.path) and not auth.valid(request.cookies.get(auth_mod.COOKIE)):
+            return JSONResponse(status_code=401, content={"detail": "Please sign in."})
+        return await call_next(request)
     app.add_middleware(CORSMiddleware, allow_origins=rt.cfg.cors_origins, allow_methods=["GET", "POST"],
                        allow_headers=["content-type", "x-request-id"])
 
