@@ -9,3 +9,5 @@ __pycache__/
 services/web/assets/logo.*
 services/web/assets/fonts/*
 !services/web/assets/fonts/.gitkeep
+services/web/assets/cars/*
+!services/web/assets/cars/.gitkeep

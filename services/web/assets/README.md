@@ -7,6 +7,7 @@ missing, the app falls back to a text wordmark and a system font, so everything 
 |---|---|---|
 | Logo (header, shown at 32 × 32 px) | `logo.<ext>` in this folder | `.svg`, `.png`, `.webp`, `.jpg` (any name starting with `logo.`) |
 | Brand font | any file in `fonts/` | `.woff2`, `.woff`, `.otf`, `.ttf` |
+| Vehicle photos (model cards, sidebar, summary) | `cars/<model_id>.<ext>`, e.g. `cars/i5_touring_edrive40.webp` | `.webp`, `.png`, `.jpg`, `.avif`; model ids as in the catalog. Models without a photo show a line drawing |
 
 Font weights are read from the file names: Thin 100, Light 300, Regular 400, Medium 500,
 Bold 700 (e.g. `BMWGroupTN-Light.otf`). Web formats (`.woff2`) are preferred when the same weight

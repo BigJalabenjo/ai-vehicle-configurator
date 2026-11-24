@@ -72,3 +72,13 @@ def test_api_roundtrip():
     assert r.status_code == 200 and r.json()["status"] == "rejected"
     assert client.post("/v1/configurations/view", json={"model_id": "nope"}).status_code == 404
     assert client.post("/v1/recommendations", json={"requirements": {"budget_max": -5}}).status_code == 422
+
+
+def test_must_have_tow_hitch_without_towing_weight(engine):
+    # Regression: a tow hitch listed as a must-have, with no towing weight, crashed the summary reasons.
+    req = Requirements(must_have_options=["tow_hitch"])
+    view = engine.view("i5_touring_edrive40", ["tow_hitch"], req)
+    line = next(line for line in view.lines if line.id == "tow_hitch")
+    assert line.reason == "You asked for this"
+    bike = engine.view("i5_touring_edrive40", ["tow_hitch"], Requirements(towing_kg=0))
+    assert next(l for l in bike.lines if l.id == "tow_hitch").reason == "Needed for your bike carrier"

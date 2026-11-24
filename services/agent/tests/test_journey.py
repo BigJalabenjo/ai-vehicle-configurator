@@ -136,3 +136,31 @@ async def test_api_errors(agent):
     assert "Unknown model" in r["message"]["text"]
     r = await say(agent, sid, "blah")
     assert components(r, "question")  # guided recovery instead of a dead end
+
+
+async def test_failed_turn_leaves_session_unchanged(catalog_client):
+    """If the backend fails partway through a turn, nothing from that turn is kept."""
+    import httpx
+
+    from .conftest import catalog_app, make_client
+
+    class FailingChanges(httpx.AsyncBaseTransport):
+        def __init__(self):
+            self.inner = httpx.ASGITransport(app=catalog_app)
+
+        async def handle_async_request(self, request):
+            if request.url.path == "/v1/configurations/change":
+                return httpx.Response(500, json={"detail": "boom"})
+            return await self.inner.handle_async_request(request)
+
+    from agent_service.catalog_client import CatalogClient
+    flaky = CatalogClient("http://catalog", transport=FailingChanges(), retries=0)
+    async with make_client(flaky) as client:
+        sid = (await client.post("/api/sessions")).json()["session_id"]
+        await client.post(f"/api/sessions/{sid}/turn", json={"message": "bike carrier, electric, budget 85,000"})
+        r = await client.post(f"/api/sessions/{sid}/turn",
+                              json={"action": {"type": "select_model", "model_id": "i5_touring_edrive40"}})
+        assert r.status_code == 502  # selecting needs a change call (tow hitch), which fails
+        state = (await client.get(f"/api/sessions/{sid}")).json()
+        assert state["state"]["configuration"] is None  # model selection was rolled back
+        assert any(x["label"] == "Bike carrier" for x in state["state"]["requirements"])  # earlier turn kept

@@ -128,7 +128,14 @@ def create_app(runtime: Runtime | None = None) -> FastAPI:
             state = await rt.sessions.get(session_id)
             if not state:
                 raise HTTPException(404, "Session not found or expired")
-            result = await orch.handle(state, body)
+            # A turn is all-or-nothing: if it fails partway (e.g. a backend error after the model was
+            # already selected), restore the previous state instead of keeping half an update.
+            backup = state.model_copy(deep=True)
+            try:
+                result = await orch.handle(state, body)
+            except Exception:
+                await rt.sessions.save(backup)
+                raise
             await rt.sessions.save(state)
         return {"session_id": session_id, **result}
 

@@ -34,10 +34,18 @@ const WINDOWS = {
   gran_coupe: "M62 29 L74 21 L104 21 L120 29 Z", tourer: "M52 27 L62 16 L122 16 L132 27 Z",
   sedan: "M62 29 L72 21 L108 21 L118 29 Z",
 };
+// Photos per model id (assets/cars/<model_id>.<ext>), filled from the asset manifest.
+const CAR_PHOTOS = new Map();
+function carVisual(modelId, body, name = "") {
+  const photo = CAR_PHOTOS.get(modelId);
+  return photo ? `<img class="car-photo" src="${photo}" alt="${esc(name)}" loading="lazy">` : carIcon(body);
+}
+
 function carIcon(body) {
   const b = CAR_PATHS[body] ? body : "sedan";
-  const start = CAR_PATHS[b].match(/^M(\d+)/)[1];
-  const end = CAR_PATHS[b].match(/L(\d+) 46$/)[1];
+  // Sill line runs from the outline's first to its last point (outlines may end in a line or a curve).
+  const xs = CAR_PATHS[b].match(/\d+(?=\s+46\b)/g) || ["10", "158"];
+  const [start, end] = [xs[0], xs[xs.length - 1]];
   return `<svg viewBox="0 0 166 60" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round" aria-hidden="true">
     <path d="${CAR_PATHS[b]}"/><path d="${WINDOWS[b]}" stroke-width="1.1"/>
     <path d="M${start} 46 L31 46 M53 46 L117 46 M139 46 L${end} 46" />
@@ -217,7 +225,7 @@ const COMPONENTS = {
       const item = h("article", { class: "model-card" }, `
         <div class="tags"><span class="tag">${esc(BODY[card.body] || card.body)}</span><span class="tag">${esc(card.powertrain)}</span>${fit}</div>
         <h4>${esc(card.name)}</h4>
-        <div class="car">${carIcon(card.body)}</div>
+        <div class="car">${carVisual(card.model_id, card.body, card.name)}</div>
         <div class="price">from<strong>${eur(card.entry_price)}</strong>${extra}</div>
         <div class="facts">${card.highlights.map((x) => `<span>${esc(x)}</span>`).join("")}</div>
         <ul class="reasons">${card.reasons.map((r) => `<li>${esc(r)}</li>`).join("")}</ul>
@@ -297,7 +305,7 @@ const COMPONENTS = {
     return h("div", { class: "comp summary" }, `
       <div class="summary-head"><div><p class="eyebrow">Your configuration</p><h3>${esc(c.model_name)}</h3></div>
         <span class="tag ${c.valid ? "dark" : "outline"}">${c.valid ? "Valid configuration" : "Needs attention"}</span></div>
-      <div class="car">${carIcon(s.body)}</div>
+      <div class="car">${carVisual(c.model_id, s.body, c.model_name)}</div>
       <div class="facts">${facts.map((f) => `<span>${esc(f)}</span>`).join("")}</div>
       <table class="lines"><tr><td>Base price</td><td class="num">${eur(c.base_price)}</td></tr>${lines}
         <tr class="total"><td>Total price</td><td class="num">${eur(c.total_price)}</td></tr></table>
@@ -355,7 +363,7 @@ function renderState(state) {
     <div class="config-model">
       <div class="tags"><span class="tag">${esc(BODY[sp.body] || sp.body)}</span><span class="tag">${esc(POWERTRAIN[sp.powertrain])}</span><span class="tag ${status[0]}">${status[1]}</span></div>
       <h3>${esc(v.model_name)}</h3>
-      <div class="car">${carIcon(sp.body)}</div>
+      <div class="car">${carVisual(v.model_id, sp.body, v.model_name)}</div>
       <div class="config-price"><span>Total price</span><strong>${eur(v.total_price)}</strong></div>
       ${b.max ? `<div class="budget-bar ${b.over_by ? "over" : ""}"><div></div></div>
         <div class="budget-note ${b.over_by ? "over" : ""}">${b.over_by ? `${eur(b.over_by)} over your budget` : `${eur(b.remaining)} left of your ${eur(b.max)} budget`}</div>` : ""}
@@ -418,6 +426,10 @@ async function loadBrandAssets() {
     if (res.ok) files = await res.json();
   } catch { return; }
 
+  for (const f of files) {
+    const m = f.match(/^cars\/([a-z0-9_]+)\.(webp|png|jpe?g|avif)$/i);
+    if (m) CAR_PHOTOS.set(m[1], `assets/${f}`);
+  }
   const logo = files.find((f) => f.startsWith("logo.") && LOGO_TYPES.test(f));
   if (logo) {
     const img = $("#logo");
@@ -443,5 +455,5 @@ async function loadBrandAssets() {
   if ((await Promise.all(loads)).some(Boolean)) document.documentElement.classList.add("brand-font");
 }
 
-loadBrandAssets();
-restoreSession().catch((e) => renderError(`Could not reach the configurator service: ${e.message}`, () => location.reload()));
+// Load the asset manifest first so the first render already uses photos, logo and font.
+loadBrandAssets().finally(() => restoreSession().catch((e) => renderError(`Could not reach the configurator service: ${e.message}`, () => location.reload())));

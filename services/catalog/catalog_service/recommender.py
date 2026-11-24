@@ -292,7 +292,8 @@ TAG_REASONS = {
 def selection_reason(engine: "ConfigurationEngine", model: VehicleModel, option_id: str, req: Requirements) -> str:
     """Why a customer-selected option makes sense, in terms of their stated needs (for the summary)."""
     if option_id in options_needed_for(engine, model, req):
-        if option_id == "tow_hitch":
+        # The hitch can be needed for a towing weight, or simply be a must-have without one.
+        if option_id == "tow_hitch" and req.towing_kg is not None:
             return "Needed for your bike carrier" if req.towing_kg == 0 else f"Needed to tow {req.towing_kg:,} kg"
         if option_id == "third_row":
             return "Needed for the seats you asked for"
