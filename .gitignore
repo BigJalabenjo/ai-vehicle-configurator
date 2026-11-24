@@ -4,3 +4,8 @@ __pycache__/
 *.pyc
 .pytest_cache/
 .DS_Store
+
+# Brand assets stay local (licensed; see services/web/assets/README.md)
+services/web/assets/logo.*
+services/web/assets/fonts/*
+!services/web/assets/fonts/.gitkeep

@@ -1,11 +1,11 @@
-// Configurator Assistant - web client.
+// BMW Configurator Assistant - web client.
 // Renders the agent's messages and adaptive UI components; every user interaction is sent
 // back to the agent service as either a free-text message or a structured action.
 
 const API = "/api";
 const $ = (sel) => document.querySelector(sel);
 const els = {
-  messages: $("#messages"), form: $("#composer"), input: $("#input"), send: $("#send"),
+  messages: $("#messages"), scroll: $("#scroll"), form: $("#composer"), input: $("#input"), send: $("#send"),
   mode: $("#mode"), needs: $("#needs"), assumptions: $("#assumptions"),
   assumptionsBox: $("#assumptions-box"), config: $("#config"), newSession: $("#new-session"),
 };
@@ -19,6 +19,31 @@ const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "
 const md = (s) => esc(s).replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>").replace(/\n/g, "<br>");
 const eur = (v) => "€" + Number(v).toLocaleString("en-US");
 const POWERTRAIN = { bev: "Electric", phev: "Plug-in hybrid", petrol: "Petrol", diesel: "Diesel" };
+const BODY = { sav: "SAV", touring: "Touring", gran_coupe: "Gran Coupé", tourer: "Active Tourer", sedan: "Sedan" };
+
+// Line-drawn side profiles per body style (no photos in the fictional catalog).
+const CAR_PATHS = {
+  sav: "M10 46 L10 36 Q12 31 22 30 L38 29 L52 17 Q57 13 65 13 L118 13 Q126 13 131 17 L146 29 Q156 30 158 35 L158 46",
+  touring: "M8 46 L8 38 Q10 33 20 32 L40 31 L56 21 Q61 18 68 18 L140 18 Q147 18 150 22 L156 32 L158 46",
+  gran_coupe: "M8 46 L8 38 Q10 33 20 32 L42 30 L60 20 Q65 17 72 17 L106 17 Q116 18 126 25 L150 32 Q158 34 158 46",
+  tourer: "M10 46 L10 35 Q12 30 22 29 L34 28 L48 15 Q53 11 60 11 L124 11 Q131 11 135 16 L146 30 L150 46",
+  sedan: "M8 46 L8 38 Q10 33 20 32 L42 30 L58 20 Q63 17 70 17 L110 17 Q118 17 124 22 L134 30 L154 32 Q158 34 158 46",
+};
+const WINDOWS = {
+  sav: "M56 28 L66 18 L116 18 L128 28 Z", touring: "M60 30 L70 22 L140 22 L146 30 Z",
+  gran_coupe: "M62 29 L74 21 L104 21 L120 29 Z", tourer: "M52 27 L62 16 L122 16 L132 27 Z",
+  sedan: "M62 29 L72 21 L108 21 L118 29 Z",
+};
+function carIcon(body) {
+  const b = CAR_PATHS[body] ? body : "sedan";
+  const start = CAR_PATHS[b].match(/^M(\d+)/)[1];
+  const end = CAR_PATHS[b].match(/L(\d+) 46$/)[1];
+  return `<svg viewBox="0 0 166 60" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round" aria-hidden="true">
+    <path d="${CAR_PATHS[b]}"/><path d="${WINDOWS[b]}" stroke-width="1.1"/>
+    <path d="M${start} 46 L31 46 M53 46 L117 46 M139 46 L${end} 46" />
+    <circle cx="42" cy="46" r="11" fill="#fff"/><circle cx="42" cy="46" r="5"/>
+    <circle cx="128" cy="46" r="11" fill="#fff"/><circle cx="128" cy="46" r="5"/></svg>`;
+}
 
 function h(tag, attrs = {}, html = "") {
   const el = document.createElement(tag);
@@ -143,7 +168,10 @@ function renderMessage(msg, historical = false) {
   scroll();
 }
 
-const scroll = () => requestAnimationFrame(() => { els.messages.scrollTop = els.messages.scrollHeight; });
+const scroll = () => requestAnimationFrame(() => {
+  els.scroll.scrollTop = els.scroll.scrollHeight;
+  if (window.matchMedia("(max-width: 1000px)").matches) els.form.scrollIntoView({ block: "end" });
+});
 
 function markDone(el) {
   el.classList.add("done");
@@ -160,7 +188,7 @@ const COMPONENTS = {
     const el = h("div", { class: "comp question" }, `<p>${esc(c.prompt)}</p>`);
     const row = h("div", { class: "choices" });
     c.choices.forEach((ch) => row.append(h("button", {
-      class: "chip-btn",
+      class: "choice",
       onclick: () => { markDone(el); act({ type: "answer", value: ch.label }, ch.label); },
     }, esc(ch.label))));
     el.append(row);
@@ -173,7 +201,7 @@ const COMPONENTS = {
     const row = h("div", { class: "slider-row" });
     row.append(h("span", {}, esc(c.left_label)), input, h("span", {}, esc(c.right_label)));
     const apply = h("button", {
-      class: "primary small",
+      class: "btn primary small",
       onclick: () => { markDone(el); act({ type: "set_preference", key: c.preference, value: input.value / 100 }, `Preference: ${input.value}% sporty`); },
     }, "Apply");
     el.append(row, apply);
@@ -184,16 +212,18 @@ const COMPONENTS = {
     const el = h("div", { class: "comp" }, `<h3>${esc(c.title)}</h3>`);
     const grid = h("div", { class: "cards" });
     c.cards.forEach((card) => {
-      const fit = card.fits ? `<span class="badge ok">Meets your needs</span>` : `<span class="badge warn">Needs a compromise</span>`;
+      const fit = card.fits ? `<span class="tag dark">Meets your needs</span>` : `<span class="tag outline">Needs a compromise</span>`;
+      const extra = card.entry_price !== card.base_price ? `<small>Base ${eur(card.base_price)} + options your needs require</small>` : "";
       const item = h("article", { class: "model-card" }, `
-        <div class="model-top"><span class="pt">${esc(card.powertrain)}</span>${fit}</div>
+        <div class="tags"><span class="tag">${esc(BODY[card.body] || card.body)}</span><span class="tag">${esc(card.powertrain)}</span>${fit}</div>
         <h4>${esc(card.name)}</h4>
-        <div class="price">from ${eur(card.entry_price)}${card.entry_price !== card.base_price ? ` <small>(base ${eur(card.base_price)} + needed options)</small>` : ""}</div>
-        <div class="highlights">${card.highlights.map(esc).join(" · ")}</div>
+        <div class="car">${carIcon(card.body)}</div>
+        <div class="price">from<strong>${eur(card.entry_price)}</strong>${extra}</div>
+        <div class="facts">${card.highlights.map((x) => `<span>${esc(x)}</span>`).join("")}</div>
         <ul class="reasons">${card.reasons.map((r) => `<li>${esc(r)}</li>`).join("")}</ul>
         ${card.violations.length ? `<ul class="violations">${card.violations.map((v) => `<li>${esc(v)}</li>`).join("")}</ul>` : ""}`);
       item.append(h("button", {
-        class: card.fits ? "primary" : "secondary",
+        class: `btn ${card.fits ? "primary" : "secondary"}`,
         onclick: () => act({ type: "select_model", model_id: card.model_id }, `Configure the ${card.name}`),
       }, "Configure"));
       grid.append(item);
@@ -209,7 +239,7 @@ const COMPONENTS = {
     const el = h("div", { class: "comp" }, `<h3>Side by side</h3><div class="table-wrap"><table class="compare"><thead><tr><th></th>${head}</tr></thead><tbody>${rows}</tbody></table></div>`);
     const btns = h("div", { class: "choices" });
     c.models.forEach((m) => btns.append(h("button", {
-      class: "chip-btn", onclick: () => act({ type: "select_model", model_id: m.model_id }, `Configure the ${m.name}`),
+      class: "btn secondary small", onclick: () => act({ type: "select_model", model_id: m.model_id }, `Configure the ${m.name}`),
     }, `Configure ${esc(m.name.replace("BMW ", ""))}`)));
     el.append(btns);
     return el;
@@ -220,7 +250,7 @@ const COMPONENTS = {
     c.items.forEach((t) => {
       const row = h("div", { class: "tradeoff" }, `<div><strong>${esc(t.label)}</strong><p>${esc(t.description)}</p></div>`);
       row.append(h("button", {
-        class: "secondary small",
+        class: "btn secondary small",
         onclick: () => { markDone(el); act({ type: "apply_tradeoff", patch: t.patch, label: t.label }, `Accept: ${t.label}`); },
       }, "Accept"));
       el.append(row);
@@ -235,10 +265,10 @@ const COMPONENTS = {
   },
 
   conflict(c) {
-    const el = h("div", { class: "comp conflict" }, `<p><strong>Conflict:</strong> ${esc(c.message)}</p>`);
+    const el = h("div", { class: "comp conflict" }, `<p><strong>This combination isn't possible.</strong> ${esc(c.message)}</p>`);
     const row = h("div", { class: "choices" });
     c.resolutions.forEach((r) => row.append(h("button", {
-      class: r.change ? "primary small" : "secondary small",
+      class: r.change ? "btn primary small" : "btn secondary small",
       onclick: () => {
         markDone(el);
         if (r.change) act({ type: "change_option", op: r.change.action, option_id: r.change.option_id, force: r.change.force }, r.label);
@@ -257,16 +287,20 @@ const COMPONENTS = {
     const lines = c.lines.filter((l) => l.status !== "standard").map((l) =>
       `<tr><td>${esc(l.name)}<div class="why">${esc(l.reason)}</div></td><td class="num">${l.price ? eur(l.price) : "incl."}</td></tr>`).join("");
     const budget = c.budget.max != null
-      ? `<p class="${c.budget.over_by ? "bad" : "good"}">${c.budget.over_by ? `${eur(c.budget.over_by)} over` : `${eur(c.budget.remaining)} under`} your ${eur(c.budget.max)} budget</p>` : "";
+      ? `<p class="check ${c.budget.over_by ? "bad" : "good"}">${c.budget.over_by ? `${eur(c.budget.over_by)} over` : `${eur(c.budget.remaining)} under`} your ${eur(c.budget.max)} budget</p>` : "";
     const unmet = c.unmet_requirements.length
       ? `<ul class="violations">${c.unmet_requirements.map((u) => `<li>${esc(u)}</li>`).join("")}</ul>`
-      : `<p class="good">✓ Meets all stated needs: ${c.requirements.map(esc).join(" · ")}</p>`;
+      : `<p class="check good">✓ Meets all your needs: ${c.requirements.map(esc).join(" · ")}</p>`;
     const s = c.specs;
+    const facts = [POWERTRAIN[s.powertrain], s.electric_range_km ? `${s.electric_range_km} km electric range` : `${s.total_range_km.toLocaleString("en-US")} km range`,
+      `${s.seats} seats`, `${s.trunk_l} l boot`, s.tow_kg ? `tows ${s.tow_kg.toLocaleString("en-US")} kg` : ""].filter(Boolean);
     return h("div", { class: "comp summary" }, `
-      <h3>${esc(c.model_name)} <span class="badge ${c.valid ? "ok" : "warn"}">${c.valid ? "Valid configuration" : "Needs attention"}</span></h3>
-      <p class="highlights">${esc(c.powertrain_label.charAt(0).toUpperCase() + c.powertrain_label.slice(1))} · ${s.electric_range_km ? s.electric_range_km + " km electric range · " : ""}${s.seats} seats · ${s.trunk_l} l boot${s.tow_kg ? " · tows " + s.tow_kg.toLocaleString("en-US") + " kg" : ""}</p>
+      <div class="summary-head"><div><p class="eyebrow">Your configuration</p><h3>${esc(c.model_name)}</h3></div>
+        <span class="tag ${c.valid ? "dark" : "outline"}">${c.valid ? "Valid configuration" : "Needs attention"}</span></div>
+      <div class="car">${carIcon(s.body)}</div>
+      <div class="facts">${facts.map((f) => `<span>${esc(f)}</span>`).join("")}</div>
       <table class="lines"><tr><td>Base price</td><td class="num">${eur(c.base_price)}</td></tr>${lines}
-        <tr class="total"><td>Total</td><td class="num">${eur(c.total_price)}</td></tr></table>
+        <tr class="total"><td>Total price</td><td class="num">${eur(c.total_price)}</td></tr></table>
       ${budget}${unmet}
       ${c.assumptions.length ? `<details><summary>Assumptions</summary><ul>${c.assumptions.map((a) => `<li>${esc(a)}</li>`).join("")}</ul></details>` : ""}`);
   },
@@ -277,7 +311,7 @@ const COMPONENTS = {
 function optionRow(o, compact = false) {
   const locked = o.state === "standard" || o.state === "included";
   const on = o.state === "selected" || locked;
-  const row = h("label", { class: `opt ${o.state}${o.recommended ? " rec" : ""}`, title: o.note || o.description });
+  const row = h("label", { class: `opt ${o.state}`, title: o.note || o.description });
   const box = h("input", { type: "checkbox", checked: on, disabled: locked, "data-opt": o.id });
   box.addEventListener("change", () => {
     const wasOn = !box.checked;
@@ -287,7 +321,8 @@ function optionRow(o, compact = false) {
   const detail = o.state === "unavailable" ? o.note
     : o.state === "included" || o.state === "standard" ? o.note
     : compact && o.recommended_reason ? o.recommended_reason : "";
-  row.append(box, h("span", { class: "opt-name" }, `${esc(o.name)}${detail ? `<small>${esc(detail)}</small>` : ""}`),
+  const rec = o.recommended && !compact ? `<span class="tag rec">Suggested</span>` : "";
+  row.append(box, h("span", { class: "opt-name" }, `${esc(o.name)}${rec}${detail ? `<small>${esc(detail)}</small>` : ""}`),
     h("span", { class: "opt-price" }, o.state === "included" || o.state === "standard" ? "incl." : eur(o.price)));
   return row;
 }
@@ -297,7 +332,7 @@ function optionRow(o, compact = false) {
 function renderState(state) {
   // needs
   els.needs.innerHTML = "";
-  if (!state.requirements.length) els.needs.innerHTML = `<p class="muted">Nothing yet - describe your situation in the chat.</p>`;
+  if (!state.requirements.length) els.needs.innerHTML = `<p class="muted">Nothing yet. Describe your situation in the chat.</p>`;
   state.requirements.forEach((r) => {
     const chip = h("span", { class: "chip" }, esc(r.label));
     chip.append(h("button", {
@@ -311,20 +346,27 @@ function renderState(state) {
 
   // configuration
   const v = state.configuration;
-  if (!v) { els.config.innerHTML = `<p class="muted">Pick a model to start configuring.</p>`; return; }
+  if (!v) { els.config.innerHTML = `<p class="muted">Choose a model to start configuring.</p>`; return; }
   const b = v.budget;
   const pct = b.max ? Math.min(100, Math.round((v.total_price / b.max) * 100)) : 0;
+  const sp = v.specs;
+  const status = v.valid ? (v.unmet_requirements.length ? ["outline", "Misses a need"] : ["dark", "Valid"]) : ["outline", "Invalid"];
   els.config.innerHTML = `
-    <div class="config-head"><strong>${esc(v.model_name)}</strong><span class="badge ${v.valid && !v.unmet_requirements.length ? "ok" : "warn"}">${v.valid ? (v.unmet_requirements.length ? "Valid, misses a need" : "Valid") : "Invalid"}</span></div>
-    <div class="total">${eur(v.total_price)}</div>
-    ${b.max ? `<div class="budget-bar ${b.over_by ? "over" : ""}"><div></div></div>
-      <div class="muted small">${b.over_by ? `${eur(b.over_by)} over budget` : `${eur(b.remaining)} left of ${eur(b.max)}`}</div>` : ""}
-    <div class="specs">${[
-      POWERTRAIN[v.specs.powertrain],
-      v.specs.electric_range_km ? `${v.specs.electric_range_km} km electric` : `${v.specs.total_range_km.toLocaleString("en-US")} km range`,
-      `${v.specs.seats} seats`, `${v.specs.trunk_l} l`,
-    ].map((s) => `<span>${esc(s)}</span>`).join("")}</div>
-    ${v.unmet_requirements.length ? `<ul class="violations">${v.unmet_requirements.map((u) => `<li>${esc(u.message)}</li>`).join("")}</ul>` : ""}`;
+    <div class="config-model">
+      <div class="tags"><span class="tag">${esc(BODY[sp.body] || sp.body)}</span><span class="tag">${esc(POWERTRAIN[sp.powertrain])}</span><span class="tag ${status[0]}">${status[1]}</span></div>
+      <h3>${esc(v.model_name)}</h3>
+      <div class="car">${carIcon(sp.body)}</div>
+      <div class="config-price"><span>Total price</span><strong>${eur(v.total_price)}</strong></div>
+      ${b.max ? `<div class="budget-bar ${b.over_by ? "over" : ""}"><div></div></div>
+        <div class="budget-note ${b.over_by ? "over" : ""}">${b.over_by ? `${eur(b.over_by)} over your budget` : `${eur(b.remaining)} left of your ${eur(b.max)} budget`}</div>` : ""}
+      <div class="spec-grid">
+        <div><span>${sp.powertrain === "bev" ? "Electric range" : "Total range"}</span><b>${(sp.powertrain === "bev" ? sp.electric_range_km : sp.total_range_km).toLocaleString("en-US")} km</b></div>
+        <div><span>0–100 km/h</span><b>${sp.acceleration_s} s</b></div>
+        <div><span>Seats</span><b>${sp.seats}</b></div>
+        <div><span>Boot</span><b>${sp.trunk_l} l</b></div>
+      </div>
+      ${v.unmet_requirements.length ? `<ul class="violations">${v.unmet_requirements.map((u) => `<li>${esc(u.message)}</li>`).join("")}</ul>` : ""}
+    </div>`;
 
   const fill = els.config.querySelector(".budget-bar div");
   if (fill) fill.style.width = `${pct}%`; // set via CSSOM: the CSP forbids inline style attributes
@@ -344,7 +386,7 @@ function renderState(state) {
     opts.forEach((o) => box.append(optionRow(o)));
     els.config.append(box);
   }
-  els.config.append(h("button", { class: "primary full", onclick: () => act({ type: "request_summary" }, "Show summary") }, "Review summary"));
+  els.config.append(h("button", { class: "btn primary full", onclick: () => act({ type: "request_summary" }, "Show summary") }, "Review summary"));
 }
 
 // ------------------------------------------------------------------ wiring
@@ -361,4 +403,45 @@ els.input.addEventListener("keydown", (e) => {
 });
 els.newSession.addEventListener("click", () => { if (!busy) startSession().catch((e) => renderError(e.message)); });
 
+// Optional brand assets: assets/manifest.json lists what exists (generated at image build time).
+const LOGO_TYPES = /\.(svg|png|webp|jpe?g)$/i;
+const FONT_FORMATS = { woff2: "woff2", woff: "woff", otf: "opentype", ttf: "truetype" };
+const FONT_WEIGHTS = [  // matched against the file name, most specific first
+  [/extra-?light|ultra-?light/i, "200"], [/thin|hairline/i, "100"], [/light/i, "300"], [/medium/i, "500"],
+  [/semi-?bold|demi/i, "600"], [/extra-?bold|black|heavy/i, "800"], [/bold/i, "700"], [/regular|normal|book|roman/i, "400"],
+];
+
+async function loadBrandAssets() {
+  let files = [];
+  try {
+    const res = await fetch("assets/manifest.json");
+    if (res.ok) files = await res.json();
+  } catch { return; }
+
+  const logo = files.find((f) => f.startsWith("logo.") && LOGO_TYPES.test(f));
+  if (logo) {
+    const img = $("#logo");
+    img.addEventListener("load", () => { img.hidden = false; document.body.classList.add("has-logo"); }, { once: true });
+    img.src = `assets/${encodeURI(logo)}`;
+  }
+
+  // One weight per file, preferring web formats when the same weight exists twice.
+  const order = ["woff2", "woff", "otf", "ttf"];
+  const byWeight = new Map();
+  for (const f of files.filter((x) => x.startsWith("fonts/"))) {
+    const ext = f.split(".").pop().toLowerCase();
+    if (!FONT_FORMATS[ext]) continue;
+    const weight = (FONT_WEIGHTS.find(([re]) => re.test(f.split("/").pop())) || [null, "400"])[1];
+    const current = byWeight.get(weight);
+    if (!current || order.indexOf(ext) < order.indexOf(current.split(".").pop().toLowerCase())) byWeight.set(weight, f);
+  }
+  const loads = [...byWeight].map(([weight, f]) => {
+    const ext = f.split(".").pop().toLowerCase();
+    return new FontFace("BMW Brand", `url(assets/${encodeURI(f)}) format("${FONT_FORMATS[ext]}")`, { weight }).load()
+      .then((face) => { document.fonts.add(face); return true; }).catch(() => false);
+  });
+  if ((await Promise.all(loads)).some(Boolean)) document.documentElement.classList.add("brand-font");
+}
+
+loadBrandAssets();
 restoreSession().catch((e) => renderError(`Could not reach the configurator service: ${e.message}`, () => location.reload()));
