@@ -108,7 +108,7 @@ def option_toggles(view: dict, option_ids: list[str] | None = None, title: str =
 
 def conflict(conflict_data: dict) -> dict:
     return {"type": "conflict", "id": _id(), "message": conflict_data["message"],
-            "resolutions": conflict_data["resolutions"]}
+            "option_ids": conflict_data.get("option_ids", []), "resolutions": conflict_data["resolutions"]}
 
 
 def notice(text: str, level: str = "info") -> dict:

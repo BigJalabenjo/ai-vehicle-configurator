@@ -300,6 +300,7 @@ class Toolbox:
                                         action, option_id, force)
         self.state.options = res["configuration"]["options"]
         self.view = res["configuration"]
+        self.last_change = res  # full engine result, used for UI feedback
         out: dict = {"status": res["status"], "notes": [n["message"] for n in res["notes"]],
                      "total_price": self.view["total_price"], "budget": self.view["budget"]}
         if res["conflict"]:

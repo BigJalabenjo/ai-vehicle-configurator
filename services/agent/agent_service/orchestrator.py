@@ -112,6 +112,11 @@ class Orchestrator:
     async def handle(self, state: SessionState, req: TurnRequest) -> dict:
         tb = Toolbox(self.catalog, state, error_notices=self.agent is not None)
         mode = self.mode
+        if isinstance(req.action, ChangeOptionAction):
+            # Option changes from the configurator UI are shown there (dialog, toast, highlights),
+            # not as chat messages: no echo, no reply, no transcript entry, no LLM call.
+            feedback = await self._option_change(tb, req.action)
+            return {"message": None, "feedback": feedback, "mode": mode, "state": await self.snapshot(state, tb)}
         if req.action is not None:
             text, mode = await self._handle_action(tb, req.action)
             user_echo = self._echo(req.action, tb.view)
@@ -150,7 +155,6 @@ class Orchestrator:
     @staticmethod
     def _echo(action: BaseModel, view: dict | None) -> str:
         """What the user 'said' by clicking, for the transcript."""
-        names = {o["id"]: o["name"] for o in view["catalog_options"]} if view else {}
         match action:
             case AnswerAction(value=v):
                 return v
@@ -160,8 +164,6 @@ class Orchestrator:
                 return f"Preference: {round(v * 100)}% sporty"
             case ApplyTradeoffAction(label=label):
                 return f"Accept: {label}" if label else "Accept trade-off"
-            case ChangeOptionAction(op=op, option_id=oid):
-                return f"{op.capitalize()} {names.get(oid, oid)}"
             case RemoveRequirementAction(field=f):
                 return f"Remove requirement: {f.replace('_', ' ')}"
             case SummaryAction():
@@ -171,13 +173,6 @@ class Orchestrator:
     async def _handle_action(self, tb: Toolbox, action: BaseModel) -> tuple[str, str]:
         if isinstance(action, AnswerAction):
             return await self._handle_text(tb, action.value)
-
-        if isinstance(action, ChangeOptionAction):
-            # Deterministic, no LLM round-trip. The LLM learns about it on its next turn.
-            text = await self.offline.change(tb, action.op, action.option_id, action.force)
-            verb = "added" if action.op == "add" else "removed"
-            tb.state.ui_events.append(f"Customer {verb} option {action.option_id} in the UI: {text}")
-            return text, self.mode
 
         try:
             ui_text, result = await self._apply(tb, action)
@@ -192,6 +187,24 @@ class Orchestrator:
                 log.warning("LLM unavailable (%s); narrating action in guided mode", exc)
                 tb.components = [ui.notice("The AI assistant is temporarily unavailable - continuing in guided mode.", "warning")]
         return await self._narrate_offline(tb, action, result), "guided"
+
+    async def _option_change(self, tb: Toolbox, action: ChangeOptionAction) -> dict:
+        """Apply an option change from the UI and return structured feedback for the configurator."""
+        try:
+            await tb.change_option(action.op, action.option_id, action.force)
+        except ToolError as exc:
+            return {"status": "rejected", "option_id": action.option_id, "notes": [], "changed": [],
+                    "conflict": None, "error": str(exc)}
+        res = tb.last_change
+        notes = [n["message"] for n in res["notes"]]
+        conflict = ui.conflict(res["conflict"]) if res["conflict"] else None
+        error = res["error"]["message"] if res["error"] else None
+        # The LLM learns about it on its next turn via the state block.
+        verb = "added" if action.op == "add" else "removed"
+        outcome = conflict["message"] if conflict else error or " ".join(notes)
+        tb.state.ui_events.append(f"Customer {verb} option {action.option_id} in the UI ({res['status']}): {outcome}")
+        return {"status": res["status"], "option_id": action.option_id, "notes": notes,
+                "changed": [n["option_id"] for n in res["notes"]], "conflict": conflict, "error": error}
 
     async def _apply(self, tb: Toolbox, action: BaseModel) -> tuple[str, dict]:
         if isinstance(action, SelectModelAction):

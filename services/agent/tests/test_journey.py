@@ -56,9 +56,12 @@ async def test_complete_journey_with_conflict_and_invalid_option(agent):
     toggles = components(r, "option_toggles")[0]["options"]
     assert any(o["id"] == "pkg_travel_comfort" for o in toggles)
 
-    # 4. Dependency auto-added with explanation
+    # 4. Dependency auto-added with explanation (UI option change: structured feedback, no chat message)
     r = await say(agent, sid, action={"type": "change_option", "op": "add", "option_id": "pkg_driving_assistant_pro"})
-    assert "Parking Assistant Plus" in r["message"]["text"]
+    assert r["message"] is None
+    assert r["feedback"]["status"] == "applied"
+    assert any("Parking Assistant Plus" in n for n in r["feedback"]["notes"])
+    assert "pkg_parking_assistant" in r["feedback"]["changed"]
     assert "pkg_parking_assistant" in r["state"]["configuration"]["options"]
 
     # 5. Conflict: package seats vs. sport seats -> explicit resolution, nothing changed silently
@@ -88,9 +91,10 @@ async def test_complete_journey_with_conflict_and_invalid_option(agent):
     assert summary["valid"] and not summary["unmet_requirements"]
     assert summary["total_price"] <= 78000
 
-    # Reload restores the transcript
+    # Reload restores the transcript (UI option changes leave no chat entries)
     s = (await agent.get(f"/api/sessions/{sid}")).json()
     assert len(s["transcript"]) >= 10
+    assert not any(m["text"].startswith(("Add ", "Remove ")) for m in s["transcript"] if m["role"] == "user")
 
 
 async def test_unsatisfiable_requirements_offer_tradeoffs(agent):
@@ -164,3 +168,29 @@ async def test_failed_turn_leaves_session_unchanged(catalog_client):
         state = (await client.get(f"/api/sessions/{sid}")).json()
         assert state["state"]["configuration"] is None  # model selection was rolled back
         assert any(x["label"] == "Bike carrier" for x in state["state"]["requirements"])  # earlier turn kept
+
+
+async def test_ui_option_change_feedback_for_conflict_and_rejection(agent):
+    sid = await start(agent)
+    await say(agent, sid, action={"type": "select_model", "model_id": "i5_touring_edrive40"})
+    await say(agent, sid, action={"type": "change_option", "op": "add", "option_id": "pkg_travel_comfort"})
+
+    r = await say(agent, sid, action={"type": "change_option", "op": "add", "option_id": "pkg_m_sport"})
+    fb = r["feedback"]
+    assert r["message"] is None and fb["status"] == "conflict"
+    assert {"pkg_m_sport", "pkg_travel_comfort"} <= set(fb["conflict"]["option_ids"])  # for highlighting tiles
+    assert fb["conflict"]["resolutions"][-1]["change"] is None                       # "keep" option
+    assert "pkg_m_sport" not in r["state"]["configuration"]["options"]               # nothing changed
+
+    r = await say(agent, sid, action={"type": "change_option", "op": "add", "option_id": "rear_entertainment"})
+    assert r["feedback"]["status"] == "rejected" and "not available" in r["feedback"]["error"]
+
+    # the LLM learns about UI changes through the state block on its next turn
+    s = (await agent.get(f"/api/sessions/{sid}")).json()
+    assert s["transcript"][-1]["role"] == "assistant"  # no echoes/replies were added for the option changes
+
+
+async def test_option_change_without_model_is_rejected_as_feedback(agent):
+    sid = await start(agent)
+    r = await say(agent, sid, action={"type": "change_option", "op": "add", "option_id": "hud"})
+    assert r["feedback"]["status"] == "rejected" and "select_model" in r["feedback"]["error"]
