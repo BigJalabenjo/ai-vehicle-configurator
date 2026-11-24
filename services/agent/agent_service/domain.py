@@ -66,5 +66,6 @@ class Requirements(BaseModel):
             label = "Comfort-focused" if pct < 40 else "Sporty" if pct > 60 else "Balanced comfort/sport"
             out.append(("sportiness", label))
         if self.must_have_options:
-            out.append(("must_have_options", f"{len(self.must_have_options)} must-have option(s)"))
+            names = [o.removeprefix("pkg_").replace("_", " ") for o in self.must_have_options]
+            out.append(("must_have_options", "Must have: " + ", ".join(names)))
         return out
