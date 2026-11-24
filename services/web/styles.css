@@ -67,13 +67,21 @@ svg { flex: none; }
 .mode.guided::before { background: var(--warn); }
 
 /* ------------------------------------------------------------------ layout */
-.layout { flex: 1; display: grid; grid-template-columns: minmax(0, 1fr) 420px; min-height: 0; }
-.chat { display: flex; flex-direction: column; min-height: 0; }
+/* Two columns that animate between modes. Only the chat column's width animates; the stage
+   always takes the remaining space:
+   discover  = [stage 0][chat 100%, content centred]
+   configure = [stage rest][chat 400px]            (the chat visibly slides to the right)
+   chat-min  = [stage all][chat 0]                                                        */
+:root { --ease: cubic-bezier(.4, 0, .2, 1); --move: .65s; --chat-w: 400px; --read-w: 820px; }
+.layout { flex: 1; display: flex; min-height: 0; overflow: hidden; }
+.chat { flex: 0 0 100%; min-width: 0; display: flex; flex-direction: column; min-height: 0; background: #fff;
+  transition: flex-basis var(--move) var(--ease); }
 .scroll { flex: 1; overflow-y: auto; }
-.hero { padding: 48px clamp(16px, 5vw, 64px) 8px; max-width: 980px; }
+.hero { padding: 48px 24px 8px; max-width: var(--read-w); margin: 0 auto; box-sizing: content-box; }
 .eyebrow { margin: 0 0 8px; font-size: 13px; color: var(--text-2); }
 .hero h1 { font-size: clamp(28px, 3.2vw, 40px); line-height: 1.15; }
-.messages { padding: 24px clamp(16px, 5vw, 64px) 32px; display: flex; flex-direction: column; gap: 24px; max-width: 980px; }
+.messages { padding: 24px 24px 32px; display: flex; flex-direction: column; gap: 24px; max-width: var(--read-w); margin: 0 auto;
+  box-sizing: content-box; transition: max-width var(--move) var(--ease), padding var(--move) var(--ease); }
 /* once the conversation has started, the headline steps aside */
 body.started .hero { display: none; }
 body.started .messages { padding-top: 32px; }
@@ -87,8 +95,13 @@ body.started .messages { padding-top: 32px; }
 .fold[open] > summary::before { content: "−"; }
 .fold[open] > .comp { margin-top: 12px; font-size: 15px; color: var(--text); }
 .small-note { font-size: 13px; margin: 10px 0 0; }
-.panel { background: var(--bg-2); overflow-y: auto; padding: 32px 28px; display: flex; flex-direction: column; gap: 36px; }
-.panel-section h2 { font-size: 20px; margin-bottom: 14px; }
+/* needs strip above the composer (discover mode) */
+.needs-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; width: 100%; max-width: var(--read-w); margin: 0 auto;
+  padding: 12px 24px; box-sizing: content-box; border-top: 1px solid var(--line); }
+.needs-bar[hidden] { display: none; }
+.needs-bar .label { font-size: 13px; color: var(--text-2); }
+.needs-bar .chip { padding: 2px 4px 2px 10px; font-size: 12px; }
+.needs-bar .assumptions { margin: 0; flex-basis: 100%; }
 
 /* ------------------------------------------------------------------ messages */
 .msg { display: flex; flex-direction: column; gap: 16px; }
@@ -196,7 +209,8 @@ table { border-collapse: collapse; width: 100%; font-size: 14px; }
 .opt.unavailable .opt-name { text-decoration: line-through; text-decoration-color: var(--line-strong); }
 .opt.unavailable .opt-price { color: var(--text-3); }
 .opt.standard, .opt.included { cursor: default; }
-.opt .rec { margin-left: 6px; vertical-align: 1px; background: var(--blue-soft); color: var(--blue); }
+.tag.rec { background: var(--blue-soft); color: var(--blue); }
+.opt .rec { margin-left: 6px; vertical-align: 1px; }
 
 /* ------------------------------------------------------------------ side panel */
 .chips { display: flex; flex-wrap: wrap; gap: 8px; }
@@ -236,12 +250,11 @@ table { border-collapse: collapse; width: 100%; font-size: 14px; }
 .opt-group[open] summary::after { transform: rotate(-135deg); margin-top: 4px; }
 .opt-group .opt { margin: 0 20px; }
 .opt-group .opt:last-child { border-bottom: 0; }
-.panel .btn.full { margin-top: 20px; }
 
 /* ------------------------------------------------------------------ composer */
-.composer { border-top: 1px solid var(--line); background: #fff; padding: 16px clamp(16px, 5vw, 64px); }
-.composer-inner { display: flex; gap: 12px; max-width: 852px; }
-.composer textarea { flex: 1; resize: none; min-height: 48px; border: 1px solid var(--line-strong); border-radius: var(--radius);
+.composer { border-top: 1px solid var(--line); background: #fff; padding: 16px 24px; transition: padding var(--move) var(--ease); }
+.composer-inner { display: flex; gap: 12px; max-width: var(--read-w); margin: 0 auto; transition: max-width var(--move) var(--ease); }
+.composer textarea { flex: 1; min-width: 0; resize: none; min-height: 48px; border: 1px solid var(--line-strong); border-radius: var(--radius);
   padding: 12px 14px; font: inherit; font-weight: 400; color: var(--text); }
 .composer textarea:focus { outline: none; border-color: var(--text); box-shadow: inset 0 0 0 1px var(--text); }
 .composer .btn { min-height: 48px; }
@@ -250,9 +263,8 @@ body.busy .scroll { cursor: progress; }
 /* ------------------------------------------------------------------ responsive */
 @media (max-width: 1000px) {
   body { height: auto; }
-  .layout { grid-template-columns: 1fr; }
+  .layout { display: block; overflow: visible; }
   .scroll { overflow: visible; }
-  .panel { padding: 28px 16px; }
   .composer { position: sticky; bottom: 0; z-index: 2; }
 }
 @media (max-width: 600px) {
@@ -266,3 +278,104 @@ body.busy .scroll { cursor: progress; }
   .cards { padding: 8px; gap: 8px; }
   .tradeoff { flex-direction: column; align-items: flex-start; }
 }
+
+/* ================================================================== configure mode
+   The selected vehicle takes centre stage; the assistant moves to a side panel that can be
+   minimized to a floating button. */
+.chat-head { display: none; }
+.icon-btn { display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; background: none; border: 0; border-radius: var(--radius); }
+.icon-btn:hover { background: var(--bg-2); }
+.icon-btn svg { width: 18px; height: 18px; stroke: currentColor; stroke-width: 1.5; fill: none; }
+
+body.mode-configure .chat { flex: 0 0 var(--chat-w); border-left: 1px solid var(--line); }
+body.mode-configure .chat-head { display: flex; align-items: center; justify-content: space-between; padding: 10px 12px 10px 20px; border-bottom: 1px solid var(--line); font-weight: 400; white-space: nowrap; }
+body.mode-configure .hero, body.mode-configure .needs-bar { display: none; }
+body.mode-configure .messages { max-width: calc(var(--chat-w) - 40px); padding: 20px 20px 28px; gap: 20px; }
+body.mode-configure .msg.assistant .bubble { font-size: 15px; }
+body.mode-configure .cards { grid-template-columns: 1fr; padding: 8px; gap: 8px; }
+body.mode-configure .composer { padding: 12px 16px; }
+body.mode-configure .composer-inner { max-width: calc(var(--chat-w) - 32px); }
+/* minimized: the assistant slides out to the right, the car takes the full width */
+body.mode-configure.chat-min .chat { flex-basis: 0; border-left-color: transparent; visibility: hidden;
+  transition: flex-basis var(--move) var(--ease), visibility 0s var(--move); }
+body.mode-configure.chat-min .chat > * { min-width: var(--chat-w); }
+
+.stage { flex: 1 1 0%; min-width: 0; overflow-x: hidden; overflow-y: auto; background: #fff; opacity: 0; transform: translateX(-40px);
+  transition: opacity .45s ease, transform var(--move) var(--ease); }
+body.mode-configure .stage { opacity: 1; transform: none; transition-delay: .15s, 0s; }
+/* keep the stage content at full width while its column grows, so it doesn't reflow mid-animation */
+.stage-inner { min-width: min(1120px, calc(100vw - var(--chat-w))); }
+.stage-inner { max-width: 1120px; margin: 0 auto; padding: 40px clamp(16px, 4vw, 48px) 56px; }
+.stage-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 32px; }
+.stage-head h1 { font-size: clamp(30px, 3.4vw, 46px); line-height: 1.1; margin: 4px 0 10px; }
+.stage-price { display: flex; flex-direction: column; align-items: flex-end; min-width: 240px; text-align: right; }
+.stage-price > span:first-child { font-size: 13px; color: var(--text-2); }
+.stage-price strong { font-size: 34px; font-weight: 300; line-height: 1.2; }
+.stage-price .budget-bar { width: 240px; }
+.stage-car { margin: 8px 0 0; overflow: hidden; background: linear-gradient(180deg, #fff 0%, #fff 55%, var(--bg-2) 100%); }
+.stage-car .car-photo { height: clamp(240px, 32vw, 420px); transform: scale(1.3); }
+.stage-car svg { width: 100%; height: 220px; padding: 20px 0; }
+.stage-specs { display: grid; grid-template-columns: repeat(4, 1fr); margin: 0; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+.stage-specs div { padding: 16px 0; }
+.stage-specs dt { font-size: 12px; color: var(--text-2); }
+.stage-specs dd { margin: 2px 0 0; font-size: 22px; }
+.stage-needs { display: flex; align-items: baseline; gap: 16px; margin: 24px 0 8px; }
+.stage-needs .label { font-size: 13px; color: var(--text-2); white-space: nowrap; }
+.stage-needs .chip { padding: 3px 10px; background: var(--bg-2); border-color: transparent; }
+
+.tabs { display: flex; gap: 28px; margin-top: 24px; border-bottom: 1px solid var(--line); overflow-x: auto; scrollbar-width: none; }
+.tabs button { flex: none; background: none; border: 0; border-bottom: 2px solid transparent; padding: 12px 0; font-size: 15px; color: var(--text-2); display: inline-flex; align-items: center; gap: 6px; }
+.tabs button:hover { color: var(--text); }
+.tabs button[aria-selected="true"] { color: var(--text); border-bottom-color: var(--text); font-weight: 400; }
+.tabs .count { min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; background: var(--text); color: #fff; font-size: 11px; display: inline-flex; align-items: center; justify-content: center; }
+
+.tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 12px; padding: 20px 0 28px; }
+.tile { display: grid; grid-template-columns: 20px 1fr; grid-template-areas: "check name" ". note" ". price"; gap: 4px 12px; align-content: start;
+  padding: 16px; text-align: left; background: #fff; border: 1px solid var(--line-strong); border-radius: var(--radius); font-size: 14px; transition: border-color .15s, box-shadow .15s; }
+.tile:hover:not(:disabled) { border-color: var(--text); }
+.tile.on { border-color: var(--blue); box-shadow: inset 0 0 0 1px var(--blue); }
+.tile:disabled { cursor: default; background: var(--bg-2); border-color: var(--line); }
+.tile-check { grid-area: check; width: 18px; height: 18px; margin-top: 1px; border: 1px solid var(--line-strong); border-radius: 2px; background: #fff; position: relative; }
+.tile.on .tile-check { background: var(--blue); border-color: var(--blue); }
+.tile.on .tile-check::after { content: ""; position: absolute; left: 5px; top: 1px; width: 5px; height: 10px; border: solid #fff; border-width: 0 2px 2px 0; transform: rotate(45deg); }
+.tile:disabled.on .tile-check { background: var(--text-3); border-color: var(--text-3); }
+.tile-name { grid-area: name; font-weight: 400; }
+.tile-name .tag { margin-left: 6px; vertical-align: 1px; }
+.tile-note { grid-area: note; font-size: 12px; color: var(--text-2); }
+.tile-price { grid-area: price; color: var(--text-2); }
+.tile.unavailable { color: var(--text-3); }
+.tile.unavailable .tile-name { text-decoration: line-through; text-decoration-color: var(--line-strong); }
+.stage-actions { display: flex; justify-content: flex-end; }
+
+.fab { position: fixed; right: 24px; bottom: 24px; z-index: 10; display: inline-flex; align-items: center; gap: 8px; padding: 12px 20px;
+  background: var(--text); color: #fff; border: 0; border-radius: 24px; font-weight: 500; box-shadow: 0 6px 20px rgba(0,0,0,.18); }
+.fab[hidden] { display: none; }
+.fab svg { width: 18px; height: 18px; stroke: currentColor; stroke-width: 1.5; fill: none; }
+.fab.has-new::after { content: ""; position: absolute; top: 6px; right: 10px; width: 9px; height: 9px; border-radius: 50%; background: var(--blue); border: 2px solid var(--text); }
+
+@media (max-width: 1000px) {
+  /* minmax(0, …): the tab row scrolls sideways instead of widening the page */
+  .stage, .chat { transition: none; }
+  .stage-inner { min-width: 0; }
+  body:not(.mode-configure) .stage { display: none; }
+  body.mode-configure .stage { overflow: visible; opacity: 1; transform: none; }
+  body.mode-configure.chat-min .chat { display: none; }
+  /* the assistant opens as a full-screen sheet over the stage */
+  body.mode-configure:not(.chat-min) { overflow: hidden; }
+  body.mode-configure:not(.chat-min) .chat { position: fixed; inset: 64px 0 0 0; z-index: 5; display: flex; flex-direction: column; background: #fff; border-left: 0; }
+  body.mode-configure:not(.chat-min) .chat .scroll { flex: 1; min-height: 0; overflow-y: auto; }
+  body.mode-configure .composer { position: static; }
+  .stage-head { flex-direction: column; gap: 12px; }
+  .stage-price { align-items: flex-start; text-align: left; min-width: 0; }
+  .stage-specs { grid-template-columns: repeat(2, 1fr); }
+  .stage-needs { flex-direction: column; gap: 8px; }
+  .stage-actions .btn { width: 100%; }
+}
+
+/* options the selected model doesn't offer: folded into one line at the end of a tab */
+.not-offered { grid-column: 1 / -1; font-size: 13px; color: var(--text-2); }
+.not-offered > summary { cursor: pointer; list-style: none; display: inline-flex; align-items: center; gap: 6px; padding: 4px 0; }
+.not-offered > summary::-webkit-details-marker { display: none; }
+.not-offered > summary::before { content: "+"; font-size: 15px; line-height: 1; }
+.not-offered[open] > summary::before { content: "−"; }
+.not-offered > .tiles { padding: 12px 0 0; }

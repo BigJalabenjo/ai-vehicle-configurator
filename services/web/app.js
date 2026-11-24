@@ -7,7 +7,8 @@ const $ = (sel) => document.querySelector(sel);
 const els = {
   messages: $("#messages"), scroll: $("#scroll"), form: $("#composer"), input: $("#input"), send: $("#send"),
   mode: $("#mode"), needs: $("#needs"), assumptions: $("#assumptions"),
-  assumptionsBox: $("#assumptions-box"), config: $("#config"), newSession: $("#new-session"),
+  assumptionsBox: $("#assumptions-box"), newSession: $("#new-session"),
+  stage: $("#stage"), chatMin: $("#chat-min"), fab: $("#chat-fab"), needsBar: $("#needs-bar"),
 };
 
 let sessionId = null;
@@ -124,6 +125,11 @@ async function send(payload, echo) {
     setMode(body.mode);
     renderMessage(body.message);
     renderState(body.state);
+    if (chatMinimized) {
+      // Replies that need a decision should not go unnoticed behind the minimized assistant.
+      const needsAttention = body.message.components.some((c) => ["conflict", "notice", "question", "summary"].includes(c.type));
+      if (needsAttention) setChatMinimized(false); else els.fab.classList.add("has-new");
+    }
   } catch (err) {
     typing.remove();
     if (err.status === 404) {
@@ -158,6 +164,7 @@ function showTyping() {
 }
 
 function renderError(text, retry) {
+  if (chatMinimized) setChatMinimized(false);
   const el = h("div", { class: "msg assistant error" }, esc(text) + " ");
   if (retry) el.append(h("button", { class: "link", onclick: () => { el.remove(); retry(); } }, "Retry"));
   els.messages.append(el);
@@ -200,7 +207,8 @@ function renderMessage(msg) {
 
 const scroll = () => requestAnimationFrame(() => {
   els.scroll.scrollTop = els.scroll.scrollHeight;
-  if (window.matchMedia("(max-width: 1000px)").matches) els.form.scrollIntoView({ block: "end" });
+  // On small screens in discover mode the page itself scrolls; keep the composer in view.
+  if (layout !== "configure" && window.matchMedia("(max-width: 1000px)").matches) els.form.scrollIntoView({ block: "end" });
 });
 
 function markDone(el) {
@@ -293,7 +301,7 @@ const COMPONENTS = {
   option_toggles(c) {
     const el = h("div", { class: "comp" }, `<h3>${esc(c.title)}</h3>`);
     c.options.slice(0, 4).forEach((o) => el.append(optionRow(o, true)));
-    if (c.options.length > 4) el.append(h("p", { class: "muted small-note" }, "More options in your configuration on the right."));
+    if (c.options.length > 4) el.append(h("p", { class: "muted small-note" }, "More options in the configurator."));
     return el;
   },
 
@@ -362,48 +370,29 @@ function optionRow(o, compact = false) {
 
 // ------------------------------------------------------------------ side panel
 
-function renderState(state) {
-  // needs
-  els.needs.innerHTML = "";
-  if (!state.requirements.length) els.needs.innerHTML = `<p class="muted">Nothing yet. Describe your situation in the chat.</p>`;
+function renderNeeds(container, state, removable = true) {
+  container.innerHTML = "";
+  if (!state.requirements.length) container.innerHTML = `<p class="muted">Nothing yet. Describe your situation in the chat.</p>`;
   state.requirements.forEach((r) => {
     const chip = h("span", { class: "chip" }, esc(r.label));
-    chip.append(h("button", {
+    if (removable) chip.append(h("button", {
       class: "x", title: "Remove this requirement", "aria-label": `Remove ${r.label}`,
       onclick: () => act({ type: "remove_requirement", field: r.field }, `Remove requirement: ${r.label}`),
     }, "×"));
-    els.needs.append(chip);
+    container.append(chip);
   });
+}
+
+function renderState(state) {
+  renderNeeds(els.needs, state);
+  els.needsBar.hidden = !state.requirements.length;
   els.assumptionsBox.hidden = !state.assumptions.length;
   els.assumptions.innerHTML = state.assumptions.map((a) => `<li>${esc(a)}</li>`).join("");
 
-  // configuration
   const v = state.configuration;
-  if (!v) { els.config.innerHTML = `<p class="muted">Choose a model to start configuring.</p>`; return; }
-  const b = v.budget;
-  const pct = b.max ? Math.min(100, Math.round((v.total_price / b.max) * 100)) : 0;
-  const openCats = new Set([...els.config.querySelectorAll("details.opt-group[open]")].map((d) => d.dataset.cat));
-  const sp = v.specs;
-  const status = v.valid ? (v.unmet_requirements.length ? ["outline", "Misses a need"] : ["dark", "Valid"]) : ["outline", "Invalid"];
-  els.config.innerHTML = `
-    <div class="config-model">
-      <p class="kicker">${esc(BODY[sp.body] || sp.body)} · ${esc(POWERTRAIN[sp.powertrain])} · <span class="status ${status[0] === "dark" ? "ok" : "warn"}">${status[1]}</span></p>
-      <h3>${esc(v.model_name)}</h3>
-      <div class="car">${carVisual(v.model_id, sp.body, v.model_name)}</div>
-      <div class="config-price"><span>Total price</span><strong>${eur(v.total_price)}</strong></div>
-      ${b.max ? `<div class="budget-bar ${b.over_by ? "over" : ""}"><div></div></div>
-        <div class="budget-note ${b.over_by ? "over" : ""}">${b.over_by ? `${eur(b.over_by)} over your budget` : `${eur(b.remaining)} left of your ${eur(b.max)} budget`}</div>` : ""}
-      <div class="spec-grid">
-        <div><span>${sp.powertrain === "bev" ? "Electric range" : "Total range"}</span><b>${(sp.powertrain === "bev" ? sp.electric_range_km : sp.total_range_km).toLocaleString("en-US")} km</b></div>
-        <div><span>0–100 km/h</span><b>${sp.acceleration_s} s</b></div>
-        <div><span>Seats</span><b>${sp.seats}</b></div>
-        <div><span>Boot</span><b>${sp.trunk_l} l</b></div>
-      </div>
-      ${v.unmet_requirements.length ? `<ul class="violations">${v.unmet_requirements.map((u) => `<li>${esc(u.message)}</li>`).join("")}</ul>` : ""}
-    </div>`;
-
-  const fill = els.config.querySelector(".budget-bar div");
-  if (fill) fill.style.width = `${pct}%`; // set via CSSOM: the CSP forbids inline style attributes
+  setLayout(v ? "configure" : "discover");
+  if (!v) return;
+  renderStage(v, state);
 
   // keep option toggles shown inside the chat in sync with the authoritative configuration
   const byId = Object.fromEntries(v.catalog_options.map((o) => [o.id, o]));
@@ -411,17 +400,132 @@ function renderState(state) {
     const o = byId[box.dataset.opt];
     if (o) box.checked = ["selected", "included", "standard"].includes(o.state);
   });
+}
 
+// ------------------------------------------------------------------ layout modes
+
+let layout = "discover";
+let chatMinimized = false;
+
+function setLayout(mode) {
+  const entering = mode === "configure" && layout !== "configure";
+  layout = mode;
+  document.body.classList.toggle("mode-configure", mode === "configure");
+  // The stage stays in the DOM so the layout change can be animated (see styles.css).
+  els.stage.setAttribute("aria-hidden", String(mode !== "configure"));
+  if (entering) {
+    els.stage.scrollTop = 0;
+    // On small screens the stage needs the room: start with the assistant minimized.
+    setChatMinimized(window.matchMedia("(max-width: 1000px)").matches);
+  }
+  if (mode !== "configure") setChatMinimized(false);
+}
+
+function setChatMinimized(on) {
+  chatMinimized = on;
+  document.body.classList.toggle("chat-min", on);
+  els.fab.hidden = !(on && layout === "configure");
+  if (!on) { els.fab.classList.remove("has-new"); scroll(); }
+}
+
+// ------------------------------------------------------------------ vehicle stage (configure mode)
+
+let activeCat = null;
+const openNotOffered = new Set();  // categories whose "not available" list is expanded
+
+function renderStage(v, state) {
+  const sp = v.specs;
+  const b = v.budget;
+  const pct = b.max ? Math.min(100, Math.round((v.total_price / b.max) * 100)) : 0;
+  const ok = v.valid && !v.unmet_requirements.length;
   const groups = {};
   v.catalog_options.forEach((o) => { (groups[o.category] ||= []).push(o); });
-  for (const [cat, opts] of Object.entries(groups)) {
-    const chosen = opts.filter((o) => o.state === "selected" || o.state === "included").length;
-    const box = h("details", { class: "opt-group", "data-cat": cat, open: openCats.has(cat) || undefined },
-      `<summary>${esc(cat)}${chosen ? `<span class="count">${chosen} selected</span>` : ""}</summary>`);
-    opts.forEach((o) => box.append(optionRow(o)));
-    els.config.append(box);
+  const cats = Object.keys(groups);
+  if (!activeCat || !groups[activeCat]) {
+    activeCat = cats.find((c) => groups[c].some((o) => o.recommended)) || cats[0];
   }
-  els.config.append(h("button", { class: "btn primary full", onclick: () => act({ type: "request_summary" }, "Show summary") }, "Review summary"));
+  const rangeLabel = sp.powertrain === "bev" ? "Electric range" : "Total range";
+  const range = (sp.powertrain === "bev" ? sp.electric_range_km : sp.total_range_km).toLocaleString("en-US");
+
+  els.stage.innerHTML = `
+    <div class="stage-inner">
+      <header class="stage-head">
+        <div>
+          <p class="kicker">${esc(BODY[sp.body] || sp.body)} · ${esc(POWERTRAIN[sp.powertrain])}</p>
+          <h1>${esc(v.model_name)}</h1>
+          <p class="status ${ok ? "ok" : "warn"}">${ok ? "Valid configuration · meets all your needs" : esc([...v.issues.map((i) => i.message), ...v.unmet_requirements.map((u) => u.message)][0] || "Needs attention")}</p>
+        </div>
+        <div class="stage-price">
+          <span>Total price</span>
+          <strong>${eur(v.total_price)}</strong>
+          ${b.max ? `<div class="budget-bar ${b.over_by ? "over" : ""}"><div></div></div>
+            <span class="budget-note ${b.over_by ? "over" : ""}">${b.over_by ? `${eur(b.over_by)} over your budget` : `${eur(b.remaining)} left of ${eur(b.max)}`}</span>` : ""}
+        </div>
+      </header>
+      <div class="stage-car">${carVisual(v.model_id, sp.body, v.model_name)}</div>
+      <dl class="stage-specs">
+        <div><dt>${rangeLabel}</dt><dd>${range} km</dd></div>
+        <div><dt>0–100 km/h</dt><dd>${sp.acceleration_s} s</dd></div>
+        <div><dt>Seats</dt><dd>${sp.seats}</dd></div>
+        <div><dt>Boot</dt><dd>${sp.trunk_l} l</dd></div>
+      </dl>
+      <div class="stage-needs"><span class="label">Your needs</span><div class="chips" id="stage-needs"></div></div>
+      <nav class="tabs" role="tablist"></nav>
+      <div class="tiles" role="tabpanel"></div>
+      <div class="stage-actions"><button class="btn primary" type="button" id="review">Review summary</button></div>
+    </div>`;
+
+  const fill = els.stage.querySelector(".budget-bar div");
+  if (fill) fill.style.width = `${pct}%`; // set via CSSOM: the CSP forbids inline style attributes
+  renderNeeds(els.stage.querySelector("#stage-needs"), state, false);
+
+  const tabs = els.stage.querySelector(".tabs");
+  const tiles = els.stage.querySelector(".tiles");
+  const showCat = (cat) => {
+    activeCat = cat;
+    tabs.querySelectorAll("button").forEach((t) => t.setAttribute("aria-selected", String(t.dataset.cat === cat)));
+    tiles.innerHTML = "";
+    const offered = groups[cat].filter((o) => o.state !== "unavailable");
+    const notOffered = groups[cat].filter((o) => o.state === "unavailable");
+    offered.forEach((o) => tiles.append(optionTile(o)));
+    if (notOffered.length) {
+      // Options this model doesn't offer stay out of the way, one click away for reference.
+      const more = h("details", { class: "not-offered", open: openNotOffered.has(cat) || undefined },
+        `<summary>Not available on this model (${notOffered.length})</summary>`);
+      more.addEventListener("toggle", () => { more.open ? openNotOffered.add(cat) : openNotOffered.delete(cat); });
+      const list = h("div", { class: "tiles" });
+      notOffered.forEach((o) => list.append(optionTile(o)));
+      more.append(list);
+      tiles.append(more);
+    }
+  };
+  for (const cat of cats) {
+    const chosen = groups[cat].filter((o) => o.state === "selected" || o.state === "included").length;
+    tabs.append(h("button", { type: "button", role: "tab", "data-cat": cat, onclick: () => showCat(cat) },
+      `${esc(cat)}${chosen ? `<span class="count">${chosen}</span>` : ""}`));
+  }
+  showCat(activeCat);
+  els.stage.querySelector("#review").addEventListener("click", () => {
+    if (chatMinimized) setChatMinimized(false);
+    act({ type: "request_summary" }, "Show summary");
+  });
+}
+
+function optionTile(o) {
+  const locked = o.state === "standard" || o.state === "included";
+  const on = o.state === "selected" || locked;
+  const note = o.state === "unavailable" || locked ? o.note : "";
+  const tile = h("button", {
+    type: "button", class: `tile ${o.state}${on ? " on" : ""}`, disabled: locked || undefined,
+    title: [o.recommended_reason, o.description].filter(Boolean).join(" · "), "aria-pressed": String(on),
+  }, `<span class="tile-check" aria-hidden="true"></span>
+     <span class="tile-name">${esc(o.name)}${o.recommended && !on ? `<span class="tag rec">Suggested</span>` : ""}</span>
+     ${note ? `<span class="tile-note">${esc(note)}</span>` : ""}
+     <span class="tile-price">${locked ? "incl." : eur(o.price)}</span>`);
+  tile.addEventListener("click", () => {
+    act({ type: "change_option", op: on ? "remove" : "add", option_id: o.id }, `${on ? "Remove" : "Add"} ${o.name}`);
+  });
+  return tile;
 }
 
 // ------------------------------------------------------------------ wiring
@@ -436,6 +540,8 @@ els.form.addEventListener("submit", (e) => {
 els.input.addEventListener("keydown", (e) => {
   if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); els.form.requestSubmit(); }
 });
+els.chatMin.addEventListener("click", () => setChatMinimized(true));
+els.fab.addEventListener("click", () => setChatMinimized(false));
 els.newSession.addEventListener("click", () => { if (!busy) startSession().catch((e) => renderError(e.message)); });
 
 // Optional brand assets: assets/manifest.json lists what exists (generated at image build time).

@@ -53,7 +53,8 @@ Never estimate or invent numbers. Use EUR formatted like "€71,900".
 React to them; do not repeat them.
 - Keep replies short and friendly: at most 3 short paragraphs or ~90 words. The UI carries the detail, so don't \
 repeat a question card's wording or list every option shown in a card.
-- Reply in the customer's language.
+- Reply in the language the customer writes in. Until they have written something themselves (e.g. only [UI] \
+actions so far), reply in English.
 
 Catalog overview (ids for tool calls):
 {catalog}
