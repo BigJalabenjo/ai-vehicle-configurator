@@ -1,0 +1,183 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1760" height="1130" viewBox="0 0 1760 1130" font-family="Helvetica, Arial, sans-serif">
+<defs><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#545B64"/></marker></defs>
+<rect width="1760" height="1130" fill="#FFFFFF"/>
+<text x="30" y="50" font-size="26" font-weight="700" fill="#232F3E">AI Vehicle Configurator – Target Architecture (AWS)</text>
+<text x="30" y="80" font-size="15" fill="#545B64">Conversational agent + deterministic configuration engine + adaptive UI. Fictional catalog; integration points to enterprise product systems shown on the right.</text>
+<rect x="200" y="110" width="1200" height="1000" rx="10" fill="none" stroke="#232F3E" stroke-width="1.5" stroke-dasharray="6 4"/>
+<text x="212" y="130" font-size="13" font-weight="700" fill="#232F3E">AWS Cloud · eu-central-1 (EU data residency)</text>
+<rect x="215" y="360" width="220" height="240" rx="10" fill="none" stroke="#8C4FFF" stroke-width="1.5" stroke-dasharray="6 4"/>
+<text x="227" y="380" font-size="13" font-weight="700" fill="#8C4FFF">Edge</text>
+<rect x="740" y="130" width="620" height="135" rx="10" fill="none" stroke="#01A88D" stroke-width="1.5" stroke-dasharray="6 4"/>
+<text x="752" y="150" font-size="13" font-weight="700" fill="#01A88D">Generative AI (managed)</text>
+<rect x="715" y="300" width="650" height="630" rx="10" fill="none" stroke="#00A4A6" stroke-width="1.5" stroke-dasharray="6 4"/>
+<text x="727" y="320" font-size="13" font-weight="700" fill="#00A4A6">VPC (private, 3 AZs)</text>
+<rect x="215" y="965" width="1120" height="130" rx="10" fill="none" stroke="#3F8624" stroke-width="1.5" stroke-dasharray="6 4"/>
+<text x="227" y="985" font-size="13" font-weight="700" fill="#3F8624">Observability (all services)</text>
+<line x1="180.0" y1="477.7" x2="230.0" y2="459.5" stroke="#545B64" stroke-width="1.6" marker-end="url(#arrow)"/>
+<rect x="169.4" y="447.4" width="56.2" height="20" rx="4" fill="#FFFFFF" fill-opacity="0.92"/>
+<text x="197.5" y="461.4" font-size="12" fill="#232F3E" text-anchor="middle">① HTTPS</text>
+<line x1="325.0" y1="460.0" x2="325.0" y2="520.0" stroke="#545B64" stroke-width="1.6" marker-end="url(#arrow)"/>
+<rect x="277.1" y="480.0" width="95.8" height="20" rx="4" fill="#FFFFFF" fill-opacity="0.92"/>
+<text x="325.0" y="494.0" font-size="12" fill="#232F3E" text-anchor="middle">static assets</text>
+<line x1="420.0" y1="426.2" x2="470.0" y2="426.8" stroke="#545B64" stroke-width="1.6" marker-end="url(#arrow)"/>
+<rect x="413.6" y="416.5" width="62.8" height="20" rx="4" fill="#FFFFFF" fill-opacity="0.92"/>
+<text x="445.0" y="430.5" font-size="12" fill="#232F3E" text-anchor="middle">② /api/*</text>
+<line x1="570.0" y1="466.0" x2="570.0" y2="560.0" stroke="#545B64" stroke-width="1.6" stroke-dasharray="5 4" marker-end="url(#arrow)"/>
+<rect x="518.8" y="503.0" width="102.4" height="20" rx="4" fill="#FFFFFF" fill-opacity="0.92"/>
+<text x="570.0" y="517.0" font-size="12" fill="#232F3E" text-anchor="middle">JWT (optional)</text>
+<line x1="670.0" y1="423.0" x2="740.0" y2="419.5" stroke="#545B64" stroke-width="1.6" marker-end="url(#arrow)"/>
+<rect x="680.2" y="395.2" width="49.6" height="20" rx="4" fill="#FFFFFF" fill-opacity="0.92"/>
+<text x="705.0" y="409.2" font-size="12" fill="#232F3E" text-anchor="middle">③ turn</text>
+<line x1="876.5" y1="360.0" x2="890.4" y2="246.0" stroke="#545B64" stroke-width="1.6" marker-end="url(#arrow)"/>
+<rect x="894.7" y="315.8" width="95.8" height="20" rx="4" fill="#FFFFFF" fill-opacity="0.92"/>
+<text x="942.6" y="329.8" font-size="12" fill="#232F3E" text-anchor="middle">④ LLM + tools</text>
+<line x1="1030.0" y1="208.0" x2="1080.0" y2="208.0" stroke="#545B64" stroke-width="1.6" stroke-dasharray="5 4" marker-end="url(#arrow)"/>
+<line x1="1000.0" y1="413.0" x2="1080.0" y2="413.0" stroke="#545B64" stroke-width="1.6" marker-end="url(#arrow)"/>
+<rect x="995.4" y="387.0" width="89.2" height="20" rx="4" fill="#FFFFFF" fill-opacity="0.92"/>
+<text x="1040.0" y="401.0" font-size="12" fill="#232F3E" text-anchor="middle">⑤ tool calls</text>
+<line x1="870.0" y1="466.0" x2="870.0" y2="560.0" stroke="#545B64" stroke-width="1.6" marker-end="url(#arrow)"/>
+<rect x="815.5" y="503.0" width="109.0" height="20" rx="4" fill="#FFFFFF" fill-opacity="0.92"/>
+<text x="870.0" y="517.0" font-size="12" fill="#232F3E" text-anchor="middle">⑥ session state</text>
+<line x1="1210.0" y1="466.0" x2="1210.0" y2="560.0" stroke="#545B64" stroke-width="1.6" marker-end="url(#arrow)"/>
+<line x1="1210.0" y1="700.0" x2="1210.0" y2="630.0" stroke="#545B64" stroke-width="1.6" marker-end="url(#arrow)"/>
+<rect x="1175.3" y="655.0" width="69.4" height="20" rx="4" fill="#FFFFFF" fill-opacity="0.92"/>
+<text x="1210.0" y="669.0" font-size="12" fill="#232F3E" text-anchor="middle">⑦ publish</text>
+<line x1="1430.0" y1="730.8" x2="1340.0" y2="732.5" stroke="#545B64" stroke-width="1.6" marker-end="url(#arrow)"/>
+<rect x="1350.6" y="705.4" width="95.8" height="20" rx="4" fill="#FFFFFF" fill-opacity="0.92"/>
+<text x="1398.5" y="719.4" font-size="12" fill="#232F3E" text-anchor="middle">pull / events</text>
+<line x1="870.0" y1="630.0" x2="870.0" y2="700.0" stroke="#545B64" stroke-width="1.6" stroke-dasharray="5 4" marker-end="url(#arrow)"/>
+<rect x="808.9" y="655.0" width="122.2" height="20" rx="4" fill="#FFFFFF" fill-opacity="0.92"/>
+<text x="870.0" y="669.0" font-size="12" fill="#232F3E" text-anchor="middle">⑧ streams → pipes</text>
+<line x1="1000.0" y1="762.7" x2="1430.0" y2="854.1" stroke="#545B64" stroke-width="1.6" marker-end="url(#arrow)"/>
+<rect x="1180.3" y="798.4" width="69.4" height="20" rx="4" fill="#FFFFFF" fill-opacity="0.92"/>
+<text x="1215.0" y="812.4" font-size="12" fill="#232F3E" text-anchor="middle">hand-over</text>
+<rect x="30" y="470" width="150" height="70" rx="8" fill="#F2F3F3" stroke="#232F3E" stroke-width="2"/>
+<rect x="30" y="470" width="6" height="70" rx="3" fill="#232F3E"/>
+<text x="46" y="492" font-size="14" font-weight="700" fill="#232F3E">Customer</text>
+<text x="46" y="511" font-size="12" fill="#3B4450">Browser / mobile</text>
+<rect x="230" y="390" width="190" height="70" rx="8" fill="#F4EEFF" stroke="#8C4FFF" stroke-width="2"/>
+<rect x="230" y="390" width="6" height="70" rx="3" fill="#8C4FFF"/>
+<text x="246" y="412" font-size="14" font-weight="700" fill="#232F3E">Amazon CloudFront</text>
+<text x="246" y="431" font-size="12" fill="#3B4450">+ AWS WAF &amp; Shield, TLS</text>
+<rect x="230" y="520" width="190" height="60" rx="8" fill="#FBEAFC" stroke="#C925D1" stroke-width="2"/>
+<rect x="230" y="520" width="6" height="60" rx="3" fill="#C925D1"/>
+<text x="246" y="542" font-size="14" font-weight="700" fill="#232F3E">Amazon S3</text>
+<text x="246" y="561" font-size="12" fill="#3B4450">Static web client (OAC)</text>
+<rect x="470" y="390" width="200" height="76" rx="8" fill="#F4EEFF" stroke="#8C4FFF" stroke-width="2"/>
+<rect x="470" y="390" width="6" height="76" rx="3" fill="#8C4FFF"/>
+<text x="486" y="412" font-size="14" font-weight="700" fill="#232F3E">Amazon API Gateway</text>
+<text x="486" y="431" font-size="12" fill="#3B4450">HTTP API: auth, throttling,</text>
+<text x="486" y="447" font-size="12" fill="#3B4450">request validation</text>
+<rect x="470" y="560" width="200" height="76" rx="8" fill="#FDEBEE" stroke="#DD344C" stroke-width="2"/>
+<rect x="470" y="560" width="6" height="76" rx="3" fill="#DD344C"/>
+<text x="486" y="582" font-size="14" font-weight="700" fill="#232F3E">Amazon Cognito</text>
+<text x="486" y="601" font-size="12" fill="#3B4450">Optional sign-in; anonymous</text>
+<text x="486" y="617" font-size="12" fill="#3B4450">sessions via signed token</text>
+<rect x="760" y="170" width="270" height="76" rx="8" fill="#E6F7F4" stroke="#01A88D" stroke-width="2"/>
+<rect x="760" y="170" width="6" height="76" rx="3" fill="#01A88D"/>
+<text x="776" y="192" font-size="14" font-weight="700" fill="#232F3E">Amazon Bedrock · Claude</text>
+<text x="776" y="211" font-size="12" fill="#3B4450">Tool use via VPC endpoint,</text>
+<text x="776" y="227" font-size="12" fill="#3B4450">in-region, no training on data</text>
+<rect x="1080" y="175" width="260" height="66" rx="8" fill="#E6F7F4" stroke="#01A88D" stroke-width="2"/>
+<rect x="1080" y="175" width="6" height="66" rx="3" fill="#01A88D"/>
+<text x="1096" y="197" font-size="14" font-weight="700" fill="#232F3E">Bedrock Guardrails</text>
+<text x="1096" y="216" font-size="12" fill="#3B4450">PII redaction, denied topics,</text>
+<text x="1096" y="232" font-size="12" fill="#3B4450">prompt-attack filter</text>
+<rect x="740" y="360" width="260" height="106" rx="8" fill="#FFF3E8" stroke="#ED7100" stroke-width="2"/>
+<rect x="740" y="360" width="6" height="106" rx="3" fill="#ED7100"/>
+<text x="756" y="382" font-size="14" font-weight="700" fill="#232F3E">Agent Orchestrator</text>
+<text x="756" y="401" font-size="12" fill="#3B4450">ECS Fargate · autoscaling</text>
+<text x="756" y="417" font-size="12" fill="#3B4450">LLM tool loop, guardrails,</text>
+<text x="756" y="433" font-size="12" fill="#3B4450">adaptive-UI composer, guided fallback</text>
+<rect x="1080" y="360" width="260" height="106" rx="8" fill="#FFF3E8" stroke="#ED7100" stroke-width="2"/>
+<rect x="1080" y="360" width="6" height="106" rx="3" fill="#ED7100"/>
+<text x="1096" y="382" font-size="14" font-weight="700" fill="#232F3E">Configuration &amp; Catalog Service</text>
+<text x="1096" y="401" font-size="12" fill="#3B4450">ECS Fargate · autoscaling</text>
+<text x="1096" y="417" font-size="12" fill="#3B4450">rules engine, pricing,</text>
+<text x="1096" y="433" font-size="12" fill="#3B4450">recommendation &amp; trade-offs</text>
+<rect x="740" y="560" width="260" height="70" rx="8" fill="#FBEAFC" stroke="#C925D1" stroke-width="2"/>
+<rect x="740" y="560" width="6" height="70" rx="3" fill="#C925D1"/>
+<text x="756" y="582" font-size="14" font-weight="700" fill="#232F3E">Amazon DynamoDB</text>
+<text x="756" y="601" font-size="12" fill="#3B4450">Session state &amp; conversation</text>
+<text x="756" y="617" font-size="12" fill="#3B4450">(TTL, KMS-encrypted)</text>
+<rect x="1080" y="560" width="260" height="70" rx="8" fill="#FBEAFC" stroke="#C925D1" stroke-width="2"/>
+<rect x="1080" y="560" width="6" height="70" rx="3" fill="#C925D1"/>
+<text x="1096" y="582" font-size="14" font-weight="700" fill="#232F3E">Catalog &amp; Rules Store</text>
+<text x="1096" y="601" font-size="12" fill="#3B4450">Aurora PostgreSQL (versioned</text>
+<text x="1096" y="617" font-size="12" fill="#3B4450">catalog) + in-process cache</text>
+<rect x="740" y="700" width="260" height="70" rx="8" fill="#FDE8F2" stroke="#E7157B" stroke-width="2"/>
+<rect x="740" y="700" width="6" height="70" rx="3" fill="#E7157B"/>
+<text x="756" y="722" font-size="14" font-weight="700" fill="#232F3E">Amazon EventBridge</text>
+<text x="756" y="741" font-size="12" fill="#3B4450">configuration.completed</text>
+<text x="756" y="757" font-size="12" fill="#3B4450">(only with customer consent)</text>
+<rect x="1080" y="700" width="260" height="70" rx="8" fill="#FDE8F2" stroke="#E7157B" stroke-width="2"/>
+<rect x="1080" y="700" width="6" height="70" rx="3" fill="#E7157B"/>
+<text x="1096" y="722" font-size="14" font-weight="700" fill="#232F3E">Catalog Sync</text>
+<text x="1096" y="741" font-size="12" fill="#3B4450">EventBridge Scheduler + Lambda:</text>
+<text x="1096" y="757" font-size="12" fill="#3B4450">validate &amp; publish catalog version</text>
+<rect x="740" y="830" width="260" height="70" rx="8" fill="#FDEBEE" stroke="#DD344C" stroke-width="2"/>
+<rect x="740" y="830" width="6" height="70" rx="3" fill="#DD344C"/>
+<text x="756" y="852" font-size="14" font-weight="700" fill="#232F3E">Secrets Manager · KMS · IAM</text>
+<text x="756" y="871" font-size="12" fill="#3B4450">No keys in code; least-privilege</text>
+<text x="756" y="887" font-size="12" fill="#3B4450">task roles; encryption at rest</text>
+<rect x="1430" y="690" width="290" height="76" rx="8" fill="#FFFFFF" stroke="#545B64" stroke-width="2"/>
+<rect x="1430" y="690" width="6" height="76" rx="3" fill="#545B64"/>
+<text x="1446" y="712" font-size="14" font-weight="700" fill="#232F3E">Product / Pricing / Feasibility</text>
+<text x="1446" y="731" font-size="12" fill="#3B4450">Existing enterprise systems</text>
+<text x="1446" y="747" font-size="12" fill="#3B4450">(PIM, price lists, buildability)</text>
+<rect x="1430" y="850" width="290" height="70" rx="8" fill="#FFFFFF" stroke="#545B64" stroke-width="2"/>
+<rect x="1430" y="850" width="6" height="70" rx="3" fill="#545B64"/>
+<text x="1446" y="872" font-size="14" font-weight="700" fill="#232F3E">Dealer / Order / CRM</text>
+<text x="1446" y="891" font-size="12" fill="#3B4450">Lead hand-over, order entry</text>
+<rect x="230" y="1000" width="230" height="70" rx="8" fill="#EDF6E9" stroke="#3F8624" stroke-width="2"/>
+<rect x="230" y="1000" width="6" height="70" rx="3" fill="#3F8624"/>
+<text x="246" y="1022" font-size="14" font-weight="700" fill="#232F3E">CloudWatch</text>
+<text x="246" y="1041" font-size="12" fill="#3B4450">Logs, metrics, alarms,</text>
+<text x="246" y="1057" font-size="12" fill="#3B4450">dashboards</text>
+<rect x="490" y="1000" width="250" height="70" rx="8" fill="#EDF6E9" stroke="#3F8624" stroke-width="2"/>
+<rect x="490" y="1000" width="6" height="70" rx="3" fill="#3F8624"/>
+<text x="506" y="1022" font-size="14" font-weight="700" fill="#232F3E">X-Ray / ADOT</text>
+<text x="506" y="1041" font-size="12" fill="#3B4450">OpenTelemetry traces across</text>
+<text x="506" y="1057" font-size="12" fill="#3B4450">web → agent → catalog → LLM</text>
+<rect x="770" y="1000" width="250" height="70" rx="8" fill="#EDF6E9" stroke="#3F8624" stroke-width="2"/>
+<rect x="770" y="1000" width="6" height="70" rx="3" fill="#3F8624"/>
+<text x="786" y="1022" font-size="14" font-weight="700" fill="#232F3E">LLM telemetry &amp; evals</text>
+<text x="786" y="1041" font-size="12" fill="#3B4450">Tokens, latency, tool errors,</text>
+<text x="786" y="1057" font-size="12" fill="#3B4450">fallback rate; offline eval set</text>
+<rect x="1050" y="1000" width="250" height="70" rx="8" fill="#EDF6E9" stroke="#3F8624" stroke-width="2"/>
+<rect x="1050" y="1000" width="6" height="70" rx="3" fill="#3F8624"/>
+<text x="1066" y="1022" font-size="14" font-weight="700" fill="#232F3E">S3 audit &amp; analytics</text>
+<text x="1066" y="1041" font-size="12" fill="#3B4450">PII-redacted transcripts,</text>
+<text x="1066" y="1057" font-size="12" fill="#3B4450">conversion funnel (Athena)</text>
+<rect x="30" y="830" width="160" height="70" rx="8" fill="#EDF6E9" stroke="#3F8624" stroke-width="2"/>
+<rect x="30" y="830" width="6" height="70" rx="3" fill="#3F8624"/>
+<text x="46" y="852" font-size="14" font-weight="700" fill="#232F3E">CI/CD</text>
+<text x="46" y="871" font-size="12" fill="#3B4450">GitHub Actions → ECR →</text>
+<text x="46" y="887" font-size="12" fill="#3B4450">ECS blue/green deploys</text>
+<text x="1430" y="150" font-size="14" font-weight="700" fill="#232F3E">Flow &amp; key decisions</text>
+<text x="1430" y="172" font-size="12.5" fill="#3B4450" xml:space="preserve">① SPA served via CloudFront from S3</text>
+<text x="1430" y="190" font-size="12.5" fill="#3B4450" xml:space="preserve">② Same-origin API; WAF + throttling</text>
+<text x="1430" y="208" font-size="12.5" fill="#3B4450" xml:space="preserve">③ Each turn is free text or a structured</text>
+<text x="1430" y="226" font-size="12.5" fill="#3B4450" xml:space="preserve">   UI action (card click, toggle, slider)</text>
+<text x="1430" y="244" font-size="12.5" fill="#3B4450" xml:space="preserve">④ Claude interprets needs, plans tool calls</text>
+<text x="1430" y="262" font-size="12.5" fill="#3B4450" xml:space="preserve">   and chooses adaptive UI components</text>
+<text x="1430" y="280" font-size="12.5" fill="#3B4450" xml:space="preserve">⑤ Prices, rules and compatibility only come</text>
+<text x="1430" y="298" font-size="12.5" fill="#3B4450" xml:space="preserve">   from the deterministic engine; the agent</text>
+<text x="1430" y="316" font-size="12.5" fill="#3B4450" xml:space="preserve">   never invents them (grounded UI)</text>
+<text x="1430" y="334" font-size="12.5" fill="#3B4450" xml:space="preserve">⑥ Stateless containers scale out; state</text>
+<text x="1430" y="352" font-size="12.5" fill="#3B4450" xml:space="preserve">   lives in DynamoDB with TTL</text>
+<text x="1430" y="370" font-size="12.5" fill="#3B4450" xml:space="preserve">⑦ Catalog versions pass integrity checks</text>
+<text x="1430" y="388" font-size="12.5" fill="#3B4450" xml:space="preserve">   before they are published</text>
+<text x="1430" y="406" font-size="12.5" fill="#3B4450" xml:space="preserve">⑧ Hand-over only with consent</text>
+<text x="1430" y="424" font-size="12.5" fill="#3B4450" xml:space="preserve"></text>
+<text x="1430" y="442" font-size="12.5" fill="#3B4450" xml:space="preserve">Resilience: LLM timeout/outage → guided</text>
+<text x="1430" y="460" font-size="12.5" fill="#3B4450" xml:space="preserve">rule-based mode; retries with backoff;</text>
+<text x="1430" y="478" font-size="12.5" fill="#3B4450" xml:space="preserve">multi-AZ; health checks; autoscaling</text>
+<text x="1430" y="496" font-size="12.5" fill="#3B4450" xml:space="preserve">Privacy: no PII in prompts or logs,</text>
+<text x="1430" y="514" font-size="12.5" fill="#3B4450" xml:space="preserve">Guardrails PII filter, EU region</text>
+<text x="1430" y="532" font-size="12.5" fill="#3B4450" xml:space="preserve"></text>
+<text x="1430" y="550" font-size="12.5" fill="#3B4450" xml:space="preserve">Prototype mapping: nginx → CloudFront/S3;</text>
+<text x="1430" y="568" font-size="12.5" fill="#3B4450" xml:space="preserve">agent &amp; catalog containers → ECS;</text>
+<text x="1430" y="586" font-size="12.5" fill="#3B4450" xml:space="preserve">in-memory sessions → DynamoDB;</text>
+<text x="1430" y="604" font-size="12.5" fill="#3B4450" xml:space="preserve">Anthropic API → Bedrock</text>
+</svg>

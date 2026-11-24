@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Configurator Assistant</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="logo" aria-hidden="true">◐</span>
+      <span>Configurator Assistant</span>
+      <span class="tag">Prototype · fictional catalog</span>
+    </div>
+    <div class="topbar-actions">
+      <span id="mode" class="mode" title="Which agent answers">…</span>
+      <button id="new-session" class="ghost">New conversation</button>
+    </div>
+  </header>
+
+  <main class="layout">
+    <section class="chat" aria-label="Conversation">
+      <div id="messages" class="messages" aria-live="polite"></div>
+      <form id="composer" class="composer" autocomplete="off">
+        <textarea id="input" rows="2" maxlength="2000"
+          placeholder="Describe what you need, or ask to change something…" aria-label="Message"></textarea>
+        <button id="send" type="submit" class="primary">Send</button>
+      </form>
+    </section>
+
+    <aside class="panel" aria-label="Your configuration">
+      <section class="card">
+        <h2>Your needs</h2>
+        <div id="needs" class="chips"><p class="muted">Nothing yet - describe your situation in the chat.</p></div>
+        <details id="assumptions-box" class="assumptions" hidden>
+          <summary>How I interpreted this</summary>
+          <ul id="assumptions"></ul>
+        </details>
+      </section>
+      <section class="card" id="config-card">
+        <h2>Configuration</h2>
+        <div id="config"><p class="muted">Pick a model to start configuring.</p></div>
+      </section>
+    </aside>
+  </main>
+
+  <script src="app.js" type="module"></script>
+</body>
+</html>

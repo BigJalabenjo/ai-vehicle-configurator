@@ -1,0 +1,35 @@
+name: vehicle-configurator
+# One command to run the whole prototype:  docker compose up --build
+# Open http://localhost:8080
+# Claude mode: put ANTHROPIC_API_KEY in a local .env file (never committed). Without it, guided mode is used.
+services:
+  catalog:
+    build: ./services/catalog
+    environment:
+      LOG_LEVEL: INFO
+    expose: ["8001"]
+    restart: unless-stopped
+
+  agent:
+    build: ./services/agent
+    depends_on:
+      catalog:
+        condition: service_healthy
+    environment:
+      CATALOG_URL: http://catalog:8001
+      AGENT_MODE: ${AGENT_MODE:-auto}
+      LLM_MODEL: ${LLM_MODEL:-claude-opus-5-5}
+      LLM_EFFORT: ${LLM_EFFORT:-medium}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      CORS_ORIGINS: http://localhost:8080
+    expose: ["8000"]
+    restart: unless-stopped
+
+  web:
+    build: ./services/web
+    depends_on:
+      agent:
+        condition: service_healthy
+    ports:
+      - "8080:8080"
+    restart: unless-stopped
