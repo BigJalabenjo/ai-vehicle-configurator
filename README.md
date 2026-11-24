@@ -26,7 +26,8 @@ A customer describes their needs in plain language. An agent turns them into str
 **Prerequisites:** Docker with Compose v2. Nothing else is needed.
 
 ```bash
-git clone <this repo> && cd <repo>
+git clone https://github.com/BigJalabenjo/ai-vehicle-configurator.git
+cd ai-vehicle-configurator
 docker compose up --build
 ```
 
