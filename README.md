@@ -9,9 +9,11 @@ Prices, compatibility and conflicts always come from a rules engine, never from 
 
 > The product catalog is fictional: prices, specs and rules are invented for the demo.
 
+## Target architecture (proposal)
+
 ![Architecture](docs/architecture/architecture.png)
 
-## How it's built
+## How the prototype is built
 
 | Service | Role |
 |---|---|
@@ -21,7 +23,7 @@ Prices, compatibility and conflicts always come from a rules engine, never from 
 
 Without an API key, a rule-based guided mode answers instead of the AI, using the same tools and UI.
 
-## Run it locally
+## Run the prototype locally
 
 **Requires:** Docker with Compose.
 

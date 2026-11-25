@@ -1,212 +1,155 @@
-"""Generates the target architecture diagram as draw.io (editable) and SVG (rendered to PNG).
+"""Generates the target architecture diagram: architecture.svg (rendered to PNG) and architecture.drawio (editable).
 
-Single source of truth for both formats:
-    python docs/architecture/generate.py
-    # PNG: render architecture.svg with any browser, e.g. Chrome headless (see README)
+    python3 docs/architecture/generate.py      # or: make diagram
+
+The SVG embeds the AWS Architecture Icons from ./icons; the draw.io file uses draw.io's built-in AWS shapes.
+PNG: "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" --headless --hide-scrollbars \
+       --force-device-scale-factor=2 --window-size=1500,720 --screenshot=architecture.png architecture.svg
 """
 
 from __future__ import annotations
 
+import base64
 import html
 from pathlib import Path
 from xml.sax.saxutils import escape
 
 OUT = Path(__file__).parent
-W, H = 1760, 1130
+W, H = 1500, 720
+INK, MUTED, LINE = "#232F3E", "#5F6B7A", "#545B64"
+ICON = 64  # icon size in px; arrows attach to the icon's edges
 
-COLORS = {  # AWS category colours
-    "user": ("#232F3E", "#F2F3F3"),
-    "edge": ("#8C4FFF", "#F4EEFF"),
-    "security": ("#DD344C", "#FDEBEE"),
-    "compute": ("#ED7100", "#FFF3E8"),
-    "data": ("#C925D1", "#FBEAFC"),
-    "ai": ("#01A88D", "#E6F7F4"),
-    "integration": ("#E7157B", "#FDE8F2"),
-    "ops": ("#3F8624", "#EDF6E9"),
-    "external": ("#545B64", "#FFFFFF"),
-}
-
-# id: (title, subtitle, x, y, w, h, kind)
+# id: (title, subtitle, icon file, centre x, centre y, draw.io resIcon or raw "shape=..." style, colour)
 NODES = {
-    "user": ("Customer", "Browser / mobile", 30, 470, 150, 70, "user"),
-    "cf": ("Amazon CloudFront", "+ AWS WAF & Shield, TLS", 230, 390, 190, 70, "edge"),
-    "s3web": ("Amazon S3", "Static web client (OAC)", 230, 520, 190, 60, "data"),
-    "apigw": ("Amazon API Gateway", "HTTP API: auth, throttling,\nrequest validation", 470, 390, 200, 76, "edge"),
-    "cognito": ("Amazon Cognito", "Optional sign-in; anonymous\nsessions via signed token", 470, 560, 200, 76, "security"),
-    "bedrock": ("LLM provider (pluggable)", "Prototype: OpenAI API · Production:\nAmazon Bedrock via VPC endpoint", 760, 170, 270, 76, "ai"),
-    "guard": ("Guardrails", "PII redaction, denied topics,\nprompt-attack filter", 1080, 175, 260, 66, "ai"),
-    "agent": ("Agent Orchestrator", "ECS Fargate · autoscaling\nLLM tool loop, guardrails,\nadaptive-UI composer, guided fallback", 740, 360, 260, 106, "compute"),
-    "catalog": ("Configuration & Catalog Service", "ECS Fargate · autoscaling\nrules engine, pricing,\nrecommendation & trade-offs", 1080, 360, 260, 106, "compute"),
-    "ddb": ("Amazon DynamoDB", "Session state & conversation\n(TTL, KMS-encrypted)", 740, 560, 260, 70, "data"),
-    "catstore": ("Catalog & Rules Store", "Aurora PostgreSQL (versioned\ncatalog) + in-process cache", 1080, 560, 260, 70, "data"),
-    "bus": ("Amazon EventBridge", "configuration.completed\n(only with customer consent)", 740, 700, 260, 70, "integration"),
-    "sync": ("Catalog Sync", "EventBridge Scheduler + Lambda:\nvalidate & publish catalog version", 1080, 700, 260, 70, "integration"),
-    "secrets": ("Secrets Manager · KMS · IAM", "No keys in code; least-privilege\ntask roles; encryption at rest", 740, 830, 260, 70, "security"),
-    "pim": ("Product / Pricing / Feasibility", "Existing enterprise systems\n(PIM, price lists, buildability)", 1430, 690, 290, 76, "external"),
-    "dealer": ("Dealer / Order / CRM", "Lead hand-over, order entry", 1430, 850, 290, 70, "external"),
-    "cw": ("CloudWatch", "Logs, metrics, alarms,\ndashboards", 230, 1000, 230, 70, "ops"),
-    "xray": ("X-Ray / ADOT", "OpenTelemetry traces across\nweb → agent → catalog → LLM", 490, 1000, 250, 70, "ops"),
-    "llmops": ("LLM telemetry & evals", "Tokens, latency, tool errors,\nfallback rate; offline eval set", 770, 1000, 250, 70, "ops"),
-    "lake": ("S3 audit & analytics", "PII-redacted transcripts,\nconversion funnel (Athena)", 1050, 1000, 250, 70, "ops"),
-    "cicd": ("CI/CD", "GitHub Actions → ECR →\nECS blue/green deploys", 30, 830, 160, 70, "ops"),
+    "users": ("Customer", "Browser", "users.png", 100, 300, "shape=mxgraph.aws4.users", INK),
+    "cloudfront": ("Amazon CloudFront", "with AWS WAF", "cloudfront.png", 300, 300, "cloudfront", "#8C4FFF"),
+    "s3": ("Amazon S3", "Web app files", "s3.png", 300, 540, "s3", "#7AA116"),
+    "alb": ("Application LB", "internal (VPC origin)", "elastic-load-balancing.png", 540, 300,
+            "elastic_load_balancing", "#8C4FFF"),
+    "agent": ("Agent service", "ECS Fargate · AI tool loop", "fargate.png", 760, 300, "fargate", "#ED7100"),
+    "dynamodb": ("Amazon DynamoDB", "Chat sessions", "dynamodb.png", 760, 540, "dynamodb", "#C925D1"),
+    "bedrock": ("Amazon Bedrock", "LLM (prototype: OpenAI)", "bedrock.png", 1080, 300, "bedrock", "#01A88D"),
+    "secrets": ("Secrets Manager", "API keys", "secrets-manager.png", 950, 540, "secrets_manager", "#DD344C"),
+    "cloudwatch": ("Amazon CloudWatch", "Logs, metrics", "cloudwatch.png", 1100, 540, "cloudwatch_2", "#E7157B"),
+    # Run by its own team; the prototype stands in for it with services/catalog.
+    "catalog": ("Catalog & rules API", "prices, options, rules", "external-system.png", 1350, 300,
+                "shape=mxgraph.aws4.resourceIcon;resIcon=mxgraph.aws4.general", INK),
 }
 
-GROUPS = [  # (label, x, y, w, h, colour)
-    ("AWS Cloud · eu-central-1 (EU data residency)", 200, 110, 1200, 1000, "#232F3E"),
-    ("Edge", 215, 360, 220, 240, "#8C4FFF"),
-    ("Generative AI (provider behind an adapter)", 740, 130, 620, 135, "#01A88D"),
-    ("VPC (private, 3 AZs)", 715, 300, 650, 630, "#00A4A6"),
-    ("Observability (all services)", 215, 965, 1120, 130, "#3F8624"),
-]
-
-# (src, dst, label, dashed)
+# (from, to, label, bend points between the two icons, index of the segment that carries the label)
+# Labels sit in the middle of their segment; LABEL_AT moves one along it (0 = start, 1 = end).
+LABEL_AT = {("users", "cloudfront"): 0.2, ("agent", "bedrock"): 0.6}
 EDGES = [
-    ("user", "cf", "① HTTPS", False, {"t": 0.35, "dy": -14}),
-    ("cf", "s3web", "static assets", False),
-    ("cf", "apigw", "② /api/*", False),
-    ("apigw", "cognito", "JWT (optional)", True),
-    ("apigw", "agent", "③ turn", False, {"dy": -16}),
-    ("agent", "bedrock", "④ LLM + tools", False, {"t": 0.3, "dx": 62}),
-    ("bedrock", "guard", "", True),
-    ("agent", "catalog", "⑤ tool calls", False, {"dy": -16}),
-    ("agent", "ddb", "⑥ session state", False),
-    ("catalog", "catstore", "", False),
-    ("sync", "catstore", "⑦ publish", False),
-    ("pim", "sync", "pull / events", False, {"t": 0.35, "dy": -16}),
-    ("ddb", "bus", "⑧ streams → pipes", True),
-    ("bus", "dealer", "hand-over", False),
+    ("users", "cloudfront", "HTTPS", [], 0),
+    ("cloudfront", "s3", "app files", [], 0),
+    ("cloudfront", "alb", "/api", [], 0),
+    ("alb", "agent", "chat turns", [], 0),
+    ("agent", "bedrock", "LLM + tool use", [], 0),
+    ("agent", "catalog", "tool calls · HTTPS API", [(760, 205), (1350, 205)], 1),
+    ("agent", "dynamodb", "session state · VPC endpoint", [], 0),
 ]
 
-NOTES = [
-    "① SPA served via CloudFront from S3",
-    "② Same-origin API; WAF + throttling",
-    "③ Each turn is free text or a structured",
-    "   UI action (card click, toggle, slider)",
-    "④ The LLM interprets needs, plans tool calls",
-    "   and chooses adaptive UI components",
-    "⑤ Prices, rules and compatibility only come",
-    "   from the deterministic engine; the agent",
-    "   never invents them (grounded UI)",
-    "⑥ Stateless containers scale out; state",
-    "   lives in DynamoDB with TTL",
-    "⑦ Catalog versions pass integrity checks",
-    "   before they are published",
-    "⑧ Hand-over only with consent",
-    "",
-    "Resilience: LLM timeout/outage → guided",
-    "rule-based mode; retries with backoff;",
-    "multi-AZ; health checks; autoscaling",
-    "Privacy: no PII in prompts or logs,",
-    "PII guardrails, EU region",
-    "",
-    "Prototype mapping: nginx → CloudFront/S3;",
-    "agent & catalog containers → ECS;",
-    "in-memory sessions → DynamoDB;",
-    "OpenAI API → Bedrock (one adapter)",
+# (label, x, y, w, h, colour, dashed, draw.io group icon)
+GROUPS = [
+    ("AWS Cloud · eu-central-1", 190, 120, 1010, 560, INK, False, "group_aws_cloud_alt"),
+    ("VPC · private subnets, multi-AZ", 450, 170, 430, 250, "#8C4FFF", False, "group_vpc2"),
+    ("Catalog team · own system", 1235, 160, 230, 260, MUTED, True, "group_corporate_data_center"),
 ]
 
-
-def center(n):
-    _, _, x, y, w, h, _ = NODES[n]
-    return x + w / 2, y + h / 2
+TITLE = "AI Vehicle Configurator · target architecture on AWS"
 
 
-def clip(n, tx, ty):
-    """Point where the segment from node centre to (tx, ty) leaves the node rectangle."""
-    _, _, x, y, w, h, _ = NODES[n]
-    cx, cy = x + w / 2, y + h / 2
-    dx, dy = tx - cx, ty - cy
-    if dx == 0 and dy == 0:
-        return cx, cy
-    sx = (w / 2) / abs(dx) if dx else float("inf")
-    sy = (h / 2) / abs(dy) if dy else float("inf")
-    s = min(sx, sy)
-    return cx + dx * s, cy + dy * s
+def icon_data(name: str) -> str:
+    return "data:image/png;base64," + base64.b64encode((OUT / "icons" / name).read_bytes()).decode()
+
+
+def anchor(nid: str, towards: tuple[float, float]) -> tuple[float, float]:
+    """Point on the icon's edge facing `towards` (icons are square, arrows are horizontal or vertical)."""
+    _, _, _, cx, cy, *_ = NODES[nid]
+    dx, dy = towards[0] - cx, towards[1] - cy
+    half = ICON / 2 + 6
+    if abs(dx) >= abs(dy):
+        return (cx + (half if dx > 0 else -half), cy)
+    # Going down, start below the title and subtitle under the icon.
+    return (cx, cy + (ICON / 2 + 52 if dy > 0 else -half))
+
+
+def edge_points(src: str, dst: str, bends: list[tuple[int, int]]) -> list[tuple[float, float]]:
+    s, d = NODES[src], NODES[dst]
+    first = bends[0] if bends else (d[3], d[4])
+    last = bends[-1] if bends else (s[3], s[4])
+    return [anchor(src, first), *bends, anchor(dst, last)]
 
 
 # --------------------------------------------------------------------------- SVG
 
 
 def svg() -> str:
-    parts = [f'<svg xmlns="http://www.w3.org/2000/svg" width="{W}" height="{H}" viewBox="0 0 {W} {H}" '
-             'font-family="Helvetica, Arial, sans-serif">',
-             '<defs><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" '
-             'orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#545B64"/></marker></defs>',
-             f'<rect width="{W}" height="{H}" fill="#FFFFFF"/>',
-             '<text x="30" y="50" font-size="26" font-weight="700" fill="#232F3E">AI Vehicle Configurator – Target Architecture (AWS)</text>',
-             '<text x="30" y="80" font-size="15" fill="#545B64">Conversational agent + deterministic configuration engine + adaptive UI. '
-             'Fictional catalog; integration points to enterprise product systems shown on the right.</text>']
-    for label, x, y, w, h, color in GROUPS:
-        parts.append(f'<rect x="{x}" y="{y}" width="{w}" height="{h}" rx="10" fill="none" stroke="{color}" '
-                     f'stroke-width="1.5" stroke-dasharray="6 4"/>')
-        parts.append(f'<text x="{x + 12}" y="{y + 20}" font-size="13" font-weight="700" fill="{color}">{escape(label)}</text>')
-    for src, dst, label, dashed, *extra in EDGES:
-        pos = extra[0] if extra else {}
-        (tx, ty), (sx0, sy0) = center(dst), center(src)
-        x1, y1 = clip(src, tx, ty)
-        x2, y2 = clip(dst, sx0, sy0)
-        dash = ' stroke-dasharray="5 4"' if dashed else ""
-        parts.append(f'<line x1="{x1:.1f}" y1="{y1:.1f}" x2="{x2:.1f}" y2="{y2:.1f}" stroke="#545B64" '
-                     f'stroke-width="1.6"{dash} marker-end="url(#arrow)"/>')
-        if label:
-            t = pos.get("t", 0.5)
-            mx = x1 + (x2 - x1) * t + pos.get("dx", 0)
-            my = y1 + (y2 - y1) * t + pos.get("dy", 0)
-            lines = label.split("\n")
-            bw = max(len(line) for line in lines) * 6.6 + 10
-            bh = 16 * len(lines) + 4
-            parts.append(f'<rect x="{mx - bw / 2:.1f}" y="{my - bh / 2:.1f}" width="{bw:.1f}" height="{bh}" rx="4" '
-                         'fill="#FFFFFF" fill-opacity="0.92"/>')
-            for i, line in enumerate(lines):
-                yy = my - bh / 2 + 14 + i * 16
-                parts.append(f'<text x="{mx:.1f}" y="{yy:.1f}" font-size="12" fill="#232F3E" text-anchor="middle">{escape(line)}</text>')
-    for title, sub, x, y, w, h, kind in NODES.values():
-        stroke, fill = COLORS[kind]
-        parts.append(f'<rect x="{x}" y="{y}" width="{w}" height="{h}" rx="8" fill="{fill}" stroke="{stroke}" stroke-width="2"/>')
-        parts.append(f'<rect x="{x}" y="{y}" width="6" height="{h}" rx="3" fill="{stroke}"/>')
-        parts.append(f'<text x="{x + 16}" y="{y + 22}" font-size="14" font-weight="700" fill="#232F3E">{escape(title)}</text>')
-        for i, line in enumerate(sub.split("\n")):
-            parts.append(f'<text x="{x + 16}" y="{y + 41 + i * 16}" font-size="12" fill="#3B4450">{escape(line)}</text>')
-    parts.append('<text x="1430" y="150" font-size="14" font-weight="700" fill="#232F3E">Flow &amp; key decisions</text>')
-    for i, note in enumerate(NOTES):
-        parts.append(f'<text x="1430" y="{172 + i * 18}" font-size="12.5" fill="#3B4450" xml:space="preserve">{escape(note)}</text>')
-    parts.append("</svg>")
-    return "\n".join(parts)
+    p = [f'<svg xmlns="http://www.w3.org/2000/svg" width="{W}" height="{H}" viewBox="0 0 {W} {H}" '
+         'font-family="Helvetica Neue, Helvetica, Arial, sans-serif">',
+         '<defs><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" '
+         f'orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="{LINE}"/></marker></defs>',
+         f'<rect width="{W}" height="{H}" fill="#FFFFFF"/>',
+         f'<text x="40" y="70" font-size="26" font-weight="700" fill="{INK}">{escape(TITLE)}</text>']
+    for label, x, y, w, h, color, dashed, _ in GROUPS:
+        dash = ' stroke-dasharray="6 5"' if dashed else ""
+        p.append(f'<rect x="{x}" y="{y}" width="{w}" height="{h}" fill="none" stroke="{color}" stroke-width="1.5"{dash}/>')
+        p.append(f'<rect x="{x}" y="{y}" width="{len(label) * 7.6 + 24}" height="26" fill="{color}"/>')
+        p.append(f'<text x="{x + 12}" y="{y + 18}" font-size="13" font-weight="700" fill="#FFFFFF">{escape(label)}</text>')
+    for src, dst, label, bends, seg in EDGES:
+        pts = edge_points(src, dst, bends)
+        path = " ".join(f"{'M' if i == 0 else 'L'}{x:.0f},{y:.0f}" for i, (x, y) in enumerate(pts))
+        p.append(f'<path d="{path}" fill="none" stroke="{LINE}" stroke-width="1.8" marker-end="url(#arrow)"/>')
+        (x1, y1), (x2, y2) = pts[seg], pts[seg + 1]
+        t = LABEL_AT.get((src, dst), 0.5)
+        mx, my = x1 + (x2 - x1) * t, y1 + (y2 - y1) * t
+        bw = len(label) * 7 + 14
+        p.append(f'<rect x="{mx - bw / 2:.0f}" y="{my - 11:.0f}" width="{bw:.0f}" height="22" rx="11" '
+                 f'fill="#FFFFFF" stroke="#D5DBDB"/>')
+        p.append(f'<text x="{mx:.0f}" y="{my + 4.5:.0f}" font-size="12.5" fill="{INK}" text-anchor="middle">{escape(label)}</text>')
+    for title, sub, icon, cx, cy, *_ in NODES.values():
+        p.append(f'<image href="{icon_data(icon)}" x="{cx - ICON / 2}" y="{cy - ICON / 2}" width="{ICON}" height="{ICON}"/>')
+        p.append(f'<text x="{cx}" y="{cy + ICON / 2 + 22}" font-size="14" font-weight="700" fill="{INK}" '
+                 f'text-anchor="middle">{escape(title)}</text>')
+        p.append(f'<text x="{cx}" y="{cy + ICON / 2 + 40}" font-size="12.5" fill="{MUTED}" text-anchor="middle">{escape(sub)}</text>')
+    p.append("</svg>")
+    return "\n".join(p)
 
 
 # --------------------------------------------------------------------------- draw.io
 
 
 def drawio() -> str:
-    cells = ['<mxCell id="0"/>', '<mxCell id="1" parent="0"/>']
-    cells.append('<mxCell id="title" value="AI Vehicle Configurator – Target Architecture (AWS)" '
-                 'style="text;fontSize=24;fontStyle=1;align=left;verticalAlign=middle;" vertex="1" parent="1">'
-                 '<mxGeometry x="30" y="30" width="900" height="34" as="geometry"/></mxCell>')
-    for i, (label, x, y, w, h, color) in enumerate(GROUPS):
-        style = (f"rounded=1;arcSize=2;dashed=1;fillColor=none;strokeColor={color};fontColor={color};fontStyle=1;"
-                 "align=left;verticalAlign=top;spacingLeft=10;spacingTop=4;container=0;")
+    cells = ['<mxCell id="0"/>', '<mxCell id="1" parent="0"/>',
+             f'<mxCell id="title" value="{html.escape(TITLE)}" style="text;fontSize=24;fontStyle=1;align=left;" '
+             'vertex="1" parent="1"><mxGeometry x="30" y="40" width="900" height="34" as="geometry"/></mxCell>']
+    for i, (label, x, y, w, h, color, dashed, gr_icon) in enumerate(GROUPS):
+        style = (f"points=[];outlineConnect=0;html=1;whiteSpace=wrap;fontSize=12;fontStyle=1;container=0;"
+                 f"shape=mxgraph.aws4.group;grIcon=mxgraph.aws4.{gr_icon};strokeColor={color};fillColor=none;"
+                 f"verticalAlign=top;align=left;spacingLeft=30;fontColor={color};dashed={int(dashed)};")
         cells.append(f'<mxCell id="g{i}" value="{html.escape(label)}" style="{style}" vertex="1" parent="1">'
                      f'<mxGeometry x="{x}" y="{y}" width="{w}" height="{h}" as="geometry"/></mxCell>')
-    for nid, (title, sub, x, y, w, h, kind) in NODES.items():
-        stroke, fill = COLORS[kind]
-        value = html.escape(f"<b>{escape(title)}</b><br><font style='font-size:11px'>{escape(sub).replace(chr(10), '<br>')}</font>")
-        style = (f"rounded=1;whiteSpace=wrap;html=1;fillColor={fill};strokeColor={stroke};strokeWidth=2;"
-                 "align=left;verticalAlign=top;spacingLeft=10;spacingTop=4;fontSize=13;")
+    for nid, (title, sub, _icon, cx, cy, res_icon, color) in NODES.items():
+        value = html.escape(f"<b>{escape(title)}</b><br><font color='{MUTED}'>{escape(sub)}</font>")
+        common = ("outlineConnect=0;dashed=0;verticalLabelPosition=bottom;verticalAlign=top;align=center;html=1;"
+                  f"fontSize=12;fontColor={INK};aspect=fixed;")
+        if res_icon.startswith("shape="):
+            style = f"{common}{res_icon};fillColor={color};strokeColor=#ffffff;"
+        else:
+            style = f"{common}shape=mxgraph.aws4.resourceIcon;resIcon=mxgraph.aws4.{res_icon};fillColor={color};strokeColor=#ffffff;"
         cells.append(f'<mxCell id="{nid}" value="{value}" style="{style}" vertex="1" parent="1">'
-                     f'<mxGeometry x="{x}" y="{y}" width="{w}" height="{h}" as="geometry"/></mxCell>')
-    for i, (src, dst, label, dashed, *_pos) in enumerate(EDGES):
-        style = ("endArrow=block;endFill=1;html=1;strokeColor=#545B64;strokeWidth=1.5;fontSize=11;"
-                 "labelBackgroundColor=#FFFFFF;" + ("dashed=1;" if dashed else ""))
-        cells.append(f'<mxCell id="e{i}" value="{html.escape(label).replace(chr(10), "&lt;br&gt;")}" style="{style}" '
-                     f'edge="1" parent="1" source="{src}" target="{dst}"><mxGeometry relative="1" as="geometry"/></mxCell>')
-    notes = "<b>Flow &amp; key decisions</b><br>" + "<br>".join(escape(n) for n in NOTES)
-    cells.append(f'<mxCell id="notes" value="{html.escape(notes)}" style="text;html=1;align=left;verticalAlign=top;'
-                 f'fontSize=12;whiteSpace=wrap;" vertex="1" parent="1"><mxGeometry x="1420" y="130" width="330" height="480" '
-                 'as="geometry"/></mxCell>')
-    body = "".join(cells)
+                     f'<mxGeometry x="{cx - ICON / 2}" y="{cy - ICON / 2}" width="{ICON}" height="{ICON}" as="geometry"/></mxCell>')
+    for i, (src, dst, label, bends, _seg) in enumerate(EDGES):
+        style = (f"edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;strokeColor={LINE};"
+                 "strokeWidth=1.5;fontSize=11;labelBackgroundColor=#FFFFFF;")
+        points = "".join(f'<mxPoint x="{x}" y="{y}"/>' for x, y in bends)
+        geometry = (f'<mxGeometry relative="1" as="geometry"><Array as="points">{points}</Array></mxGeometry>' if bends
+                    else '<mxGeometry relative="1" as="geometry"/>')
+        cells.append(f'<mxCell id="e{i}" value="{html.escape(label)}" style="{style}" edge="1" parent="1" '
+                     f'source="{src}" target="{dst}">{geometry}</mxCell>')
     return ('<mxfile host="generate.py"><diagram name="Target architecture" id="arch">'
             f'<mxGraphModel dx="{W}" dy="{H}" grid="1" gridSize="10" pageWidth="{W}" pageHeight="{H}">'
-            f'<root>{body}</root></mxGraphModel></diagram></mxfile>')
+            f'<root>{"".join(cells)}</root></mxGraphModel></diagram></mxfile>')
 
 
 if __name__ == "__main__":
