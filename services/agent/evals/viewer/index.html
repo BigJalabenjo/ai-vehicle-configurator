@@ -53,6 +53,8 @@
   .pill.bad { background: var(--bad-soft); color: var(--bad); }
   .tag { font-size: 11px; font-weight: 500; letter-spacing: .03em; padding: 1px 8px; border-radius: 999px; border: 1px solid var(--line); color: var(--text-2); }
   .tag.adv { border-color: #b06ad9; color: #9b4dca; }
+  .tag.demo { border-color: var(--text-3); color: var(--text-2); border-style: dashed; }
+  .run-controls { display: inline-flex; align-items: center; gap: 10px; flex-wrap: wrap; }
   @media (prefers-color-scheme: dark) { .tag.adv { color: #d29cf5; border-color: #8d55b0; } }
   .case-meta { padding: 0 18px; color: var(--text-3); font-size: 12px; }
   .checks { list-style: none; margin: 10px 0 0; padding: 0 18px 12px; display: grid; gap: 4px; }
@@ -112,10 +114,11 @@
   <span class="sub" id="sub"></span>
   <div class="actions">
     <label><input type="checkbox" id="only-failed"> Only failed checks</label>
-    <span id="run-controls" hidden>
+    <span id="run-controls" class="run-controls" hidden>
       <select class="btn" id="case-set" aria-label="Which cases">
         <option value="all">All cases</option><option value="core">Core cases</option><option value="adversarial">Adversarial cases</option></select>
       <select class="btn" id="model" aria-label="Model"></select>
+      <label title="Adds a case that fails on purpose, to see how a failure looks"><input type="checkbox" id="with-failure"> Include deliberate failure</label>
       <button class="btn primary" id="run-btn" type="button">Run evaluation</button>
     </span>
   </div>
@@ -160,7 +163,7 @@ async function select(file) {
   renderRun();
 }
 
-const groupWord = (r) => { const g = r.groups || ["core"]; return g.length === 1 ? esc(g[0]) + " " : ""; };
+const groupWord = (r) => { const g = (r.groups || ["core"]).filter((x) => x !== "demo"); return g.length === 1 ? esc(g[0]) + " " : ""; };
 
 function renderSidebar() {
   $("#sub").textContent = `${index.length} run${index.length === 1 ? "" : "s"}`;
@@ -206,7 +209,7 @@ function renderRun() {
     const f = c.final;
     html += `
       <article class="case ${fails.length ? "failed" : ""}">
-        <div class="case-head"><h3>${esc(c.id)}</h3>${c.group === "adversarial" ? `<span class="tag adv">adversarial</span>` : ""}<p>${esc(c.about)}</p>
+        <div class="case-head"><h3>${esc(c.id)}</h3>${c.group === "adversarial" ? `<span class="tag adv">adversarial</span>` : c.group === "demo" ? `<span class="tag demo">fails on purpose</span>` : ""}<p>${esc(c.about)}</p>
           <span class="pill ${fails.length ? "bad" : ""}">${c.checks.length - fails.length}/${c.checks.length} checks</span></div>
         <div class="case-meta">${c.usage.calls} LLM calls · $${c.usage.cost_usd.toFixed(3)} · ${c.seconds} s</div>
         <ul class="checks">${shown.map((k) => `
@@ -252,9 +255,10 @@ const WHICH = { all: "all test conversations", core: "the core test conversation
 function askToRun() {
   const model = $("#model").value;
   const caseSet = $("#case-set").value;
+  const withFailure = $("#with-failure").checked;
   $("#runner").innerHTML = `
     <div class="panel"><h3>Run the evaluation?</h3>
-      <p>Plays ${WHICH[caseSet]} against the real model (${esc(model)}) using the OpenAI key from your .env.
+      <p>Plays ${WHICH[caseSet]}${withFailure ? " plus the case that fails on purpose" : ""} against the real model (${esc(model)}) using the OpenAI key from your .env.
         This costs roughly ${COST[caseSet]} and takes about ${caseSet === "all" ? "a minute" : "half a minute"}.</p>
       <div class="row"><button class="btn primary" id="confirm-run" type="button">Start run</button>
         <button class="btn" id="cancel-run" type="button">Cancel</button></div></div>`;
@@ -263,7 +267,7 @@ function askToRun() {
   $("#confirm-run").onclick = async () => {
     $("#runner").innerHTML = "";
     const res = await fetch("/api/run", { method: "POST", headers: { "content-type": "application/json", "x-eval-viewer": "1" },
-      body: JSON.stringify({ model, cases: caseSet }) });
+      body: JSON.stringify({ model, cases: caseSet, deliberate_failure: withFailure }) });
     if (!res.ok && res.status !== 409) {
       const err = await res.json().catch(() => ({}));
       showRunError(err.error || `Couldn't start the run (HTTP ${res.status}).`, []);
@@ -315,6 +319,10 @@ async function initRunner() {
   catch { return; }
   $("#model").innerHTML = st.models.map((m) => `<option>${esc(m)}</option>`).join("");
   $("#run-controls").hidden = false;
+  try { $("#with-failure").checked = localStorage.getItem("withFailure") === "1"; } catch { /* storage unavailable */ }
+  $("#with-failure").addEventListener("change", (e) => {
+    try { localStorage.setItem("withFailure", e.target.checked ? "1" : "0"); } catch { /* storage unavailable */ }
+  });
   runBtn.onclick = askToRun;
   if (st.running) watch();  // a run started earlier (or in another tab) is still going
 }

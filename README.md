@@ -228,7 +228,7 @@ make test            # 29 catalog tests + 32 agent tests
 
 Here, numbers the customer typed don't count as known prices, so a "€1" can't pass as one.
 
-A full run costs about US$0.50 and prints the score, token usage and an estimated cost. Cases are in `services/agent/evals/cases.json`. `make eval CASES=adversarial` (or `core`, or case ids) runs part of them, and `LLM_MODEL=gpt-5.4 make eval` compares another model.
+A full run costs about US$0.50 and prints the score, token usage and an estimated cost. Cases are in `services/agent/evals/cases.json`. `make eval CASES=adversarial` (or `core`, or case ids) runs part of them, and `LLM_MODEL=gpt-5.4 make eval` compares another model. A `deliberate_failure` case expects 3 child seats although the customer says two, so it always fails. It shows what a failure looks like and only runs when switched on: **Include deliberate failure** in the viewer, or `make eval CASES=deliberate_failure`.
 
 Each run is saved to `services/agent/evals/results/`, which git ignores. `make eval-view` opens a small viewer at http://localhost:8090/viewer/. Its **Run evaluation** button starts a new run with the chosen model, after asking for confirmation. Progress appears live and the result opens when the run is done. The viewer only listens on your own machine and refuses run requests from other websites. It shows:
 

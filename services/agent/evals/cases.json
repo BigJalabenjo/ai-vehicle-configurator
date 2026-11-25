@@ -180,5 +180,19 @@
       ],
       "configuration_valid": true
     }
+  },
+  {
+    "id": "deliberate_failure",
+    "group": "demo",
+    "opt_in": true,
+    "about": "Fails on purpose to show what a failed case looks like: expects 3 child seats, but the customer says two",
+    "messages": [
+      "We have two kids and want a comfortable family car."
+    ],
+    "expect": {
+      "requirements": {
+        "child_seats": 3
+      }
+    }
   }
 ]

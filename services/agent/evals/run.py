@@ -3,6 +3,7 @@ the outcome with rules (no AI grader), so one run costs only a few cents.
 
     make eval                      # from the repository root; reads OPENAI_API_KEY from .env
     make eval CASES=adversarial    # only one group ("core" or "adversarial"), or case ids
+    make eval CASES=deliberate_failure   # add the case that fails on purpose (to all cases here)
     LLM_MODEL=gpt-5.4 make eval    # compare another model
 
 What is checked per case (see cases.json): extracted needs, chosen model, cards shown, conflicts surfaced,
@@ -249,12 +250,17 @@ async def main() -> int:
     MODEL_NAMES.update({m["id"]: m["name"] for m in catalog_data["models"]})
     OPTION_NAMES.update({o["id"]: o["name"] for o in catalog_data["options"]})
     app = create_app(Runtime(catalog=catalog, cfg=cfg))
-    # Arguments pick cases: a group name ("core", "adversarial") or case ids; none = all cases.
-    only = set(sys.argv[1:])
-    cases = [c for c in json.loads((HERE / "cases.json").read_text())
-             if not only or c["id"] in only or c.get("group", "core") in only]
-    if not cases:
-        print(f"No cases match {' '.join(sorted(only))}")
+    # Arguments pick cases: group names ("core", "adversarial") and/or case ids; no group or regular id = all cases.
+    # Opt-in cases (the deliberate failure) only run when named, on top of whatever else is selected.
+    args = set(sys.argv[1:])
+    every = json.loads((HERE / "cases.json").read_text())
+    opt_in = [c for c in every if c.get("opt_in") and c["id"] in args]
+    regular = [c for c in every if not c.get("opt_in")]
+    picked = [c for c in regular if c["id"] in args or c.get("group", "core") in args]
+    named_opt_in = {c["id"] for c in opt_in}
+    cases = (picked if picked or args - named_opt_in else regular) + opt_in
+    if not cases or (args - named_opt_in and not picked and not opt_in):
+        print(f"No cases match {' '.join(sorted(args))}")
         return 2
     print(f"Model {cfg.llm_model}, {len(cases)} cases\n")
 
