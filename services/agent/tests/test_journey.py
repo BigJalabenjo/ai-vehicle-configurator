@@ -194,3 +194,27 @@ async def test_option_change_without_model_is_rejected_as_feedback(agent):
     sid = await start(agent)
     r = await say(agent, sid, action={"type": "change_option", "op": "add", "option_id": "hud"})
     assert r["feedback"]["status"] == "rejected" and "select_model" in r["feedback"]["error"]
+
+
+async def test_needs_edited_on_stage_return_feedback_without_chat(agent):
+    sid = await start(agent)
+    await say(agent, sid, action={"type": "select_model", "model_id": "i5_touring_edrive40"})
+    before = len((await agent.get(f"/api/sessions/{sid}")).json()["transcript"])
+
+    r = await say(agent, sid, action={"type": "update_requirements", "patch": {"budget_max": 40000, "min_seats": 5}})
+    fb = r["feedback"]
+    assert r["message"] is None and fb["kind"] == "requirements" and fb["status"] == "ok"
+    assert set(fb["changed"]) == {"budget_max", "min_seats"}
+    assert fb["unmet"]                                                   # the i5 Touring costs more than €40,000
+    assert r["state"]["requirement_values"]["budget_max"] == 40000      # editor is prefilled from this
+    assert any(x["field"] == "budget_max" for x in r["state"]["requirements"])
+
+    r = await say(agent, sid, action={"type": "update_requirements", "patch": {"budget_max": None}})
+    assert r["feedback"]["unmet"] == [] and r["state"]["requirement_values"]["budget_max"] is None
+
+    r = await say(agent, sid, action={"type": "update_requirements", "patch": {"min_seats": 42}})
+    assert r["feedback"]["status"] == "rejected"
+    r = await say(agent, sid, action={"type": "update_requirements", "patch": {"wings": True}})
+    assert r["feedback"]["status"] == "rejected"
+
+    assert len((await agent.get(f"/api/sessions/{sid}")).json()["transcript"]) == before  # nothing in the chat

@@ -63,13 +63,19 @@ class RemoveRequirementAction(BaseModel):
     field: str = Field(max_length=64)
 
 
+class UpdateRequirementsAction(BaseModel):
+    """Needs edited on the configurator stage: a partial patch, None clears a field."""
+    type: Literal["update_requirements"]
+    patch: dict
+
+
 class SummaryAction(BaseModel):
     type: Literal["request_summary"]
 
 
 Action = Annotated[
     Union[AnswerAction, SelectModelAction, SetPreferenceAction, ApplyTradeoffAction, ChangeOptionAction,
-          RemoveRequirementAction, SummaryAction],
+          RemoveRequirementAction, UpdateRequirementsAction, SummaryAction],
     Field(discriminator="type"),
 ]
 
@@ -117,6 +123,10 @@ class Orchestrator:
             # not as chat messages: no echo, no reply, no transcript entry, no LLM call.
             feedback = await self._option_change(tb, req.action)
             return {"message": None, "feedback": feedback, "mode": mode, "state": await self.snapshot(state, tb)}
+        if isinstance(req.action, UpdateRequirementsAction):
+            # Same for needs edited on the stage: the stage shows the result (status line, budget bar).
+            feedback = await self._requirements_change(tb, req.action)
+            return {"message": None, "feedback": feedback, "mode": mode, "state": await self.snapshot(state, tb)}
         if req.action is not None:
             text, mode = await self._handle_action(tb, req.action)
             user_echo = self._echo(req.action, tb.view)
@@ -135,6 +145,7 @@ class Orchestrator:
         view = tb.view if (tb.view and tb.view["model_id"] == state.model_id) else await tb.current_view()
         return {
             "requirements": [{"field": f, "label": label} for f, label in state.requirements.describe()],
+            "requirement_values": state.requirements.model_dump(),
             "assumptions": state.assumptions,
             "configuration": view,
         }
@@ -205,6 +216,20 @@ class Orchestrator:
         tb.state.ui_events.append(f"Customer {verb} option {action.option_id} in the UI ({res['status']}): {outcome}")
         return {"status": res["status"], "option_id": action.option_id, "notes": notes,
                 "changed": [n["option_id"] for n in res["notes"]], "conflict": conflict, "error": error}
+
+    async def _requirements_change(self, tb: Toolbox, action: UpdateRequirementsAction) -> dict:
+        """Apply needs edited on the stage and return structured feedback for the configurator."""
+        try:
+            result = await tb.update_requirements(action.patch)
+        except ToolError as exc:
+            return {"kind": "requirements", "status": "rejected", "changed": [], "unmet": [], "error": str(exc)}
+        unmet = result.get("unmet_requirements", [])
+        if result["changed"]:
+            tb.state.ui_events.append(
+                f"Customer edited their needs in the UI ({', '.join(result['changed'])}); now: "
+                f"{json.dumps(result['requirements'])}. Unmet by the current configuration: {unmet or 'none'}")
+        return {"kind": "requirements", "status": "ok" if result["changed"] else "noop",
+                "changed": result["changed"], "unmet": unmet, "error": None}
 
     async def _apply(self, tb: Toolbox, action: BaseModel) -> tuple[str, dict]:
         if isinstance(action, SelectModelAction):

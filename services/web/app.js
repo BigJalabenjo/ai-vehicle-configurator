@@ -375,14 +375,18 @@ function optionRow(o, compact = false) {
 
 // ------------------------------------------------------------------ side panel
 
-function renderNeeds(container, state, removable = true) {
+function renderNeeds(container, state, removable = true, onStage = false) {
   container.innerHTML = "";
-  if (!state.requirements.length) container.innerHTML = `<p class="muted">Nothing yet. Describe your situation in the chat.</p>`;
+  if (!state.requirements.length) {
+    container.innerHTML = onStage ? `<span class="muted">None yet</span>` : `<p class="muted">Nothing yet. Describe your situation in the chat.</p>`;
+  }
   state.requirements.forEach((r) => {
     const chip = h("span", { class: "chip" }, esc(r.label));
     if (removable) chip.append(h("button", {
       class: "x", title: "Remove this requirement", "aria-label": `Remove ${r.label}`,
-      onclick: () => act({ type: "remove_requirement", field: r.field }, `Remove requirement: ${r.label}`),
+      onclick: () => onStage
+        ? updateNeeds({ [r.field]: null })
+        : act({ type: "remove_requirement", field: r.field }, `Remove requirement: ${r.label}`),
     }, "×"));
     container.append(chip);
   });
@@ -475,7 +479,11 @@ function renderStage(v, state) {
         <div><dt>Seats</dt><dd>${sp.seats}</dd></div>
         <div><dt>Boot</dt><dd>${sp.trunk_l} l</dd></div>
       </dl>
-      <div class="stage-needs"><span class="label">Your needs</span><div class="chips" id="stage-needs"></div></div>
+      <section class="stage-needs-box">
+        <div class="stage-needs"><span class="label">Your needs</span><div class="chips" id="stage-needs"></div>
+          <button type="button" class="link-btn" id="needs-adjust" aria-expanded="${needsDraft ? "true" : "false"}">${needsDraft ? "Close" : "Adjust"}</button></div>
+        <div id="needs-editor"></div>
+      </section>
       <nav class="tabs" role="tablist"></nav>
       <div class="tiles" role="tabpanel"></div>
       <div class="stage-actions"><button class="btn primary" type="button" id="review">Review summary</button></div>
@@ -483,7 +491,13 @@ function renderStage(v, state) {
 
   const fill = els.stage.querySelector(".budget-bar div");
   if (fill) fill.style.width = `${pct}%`; // set via CSSOM: the CSP forbids inline style attributes
-  renderNeeds(els.stage.querySelector("#stage-needs"), state, false);
+  renderNeeds(els.stage.querySelector("#stage-needs"), state, true, true);
+  els.stage.querySelector("#needs-adjust").addEventListener("click", () => {
+    needsDraft = needsDraft ? null : structuredClone(state.requirement_values);
+    rerenderStage();
+    if (needsDraft) els.stage.querySelector("#needs-editor input, #needs-editor button")?.focus();
+  });
+  if (needsDraft) els.stage.querySelector("#needs-editor").append(needsEditor(state.requirement_values));
 
   const tabs = els.stage.querySelector(".tabs");
   const tiles = els.stage.querySelector(".tiles");
@@ -535,6 +549,94 @@ function optionTile(o) {
   return tile;
 }
 
+// ------------------------------------------------------------------ needs editor (stage)
+
+let needsDraft = null;  // requirement values being edited on the stage; null = editor closed
+
+const updateNeeds = (patch) =>
+  send({ action: { type: "update_requirements", patch } }, null, { silent: true });
+
+const TOWING = [[null, "Not needed"], [0, "Bike carrier"], [750, "750 kg"], [1500, "1,500 kg"], [2000, "2,000 kg"]];
+
+function needsEditor(saved) {
+  const d = needsDraft;
+  const powertrainMode = d.powertrain_required.length ? "required" : "preferred";
+  const powertrains = d.powertrain_required.length ? d.powertrain_required : d.powertrain_preferred;
+  const towing = TOWING.some(([v]) => v === d.towing_kg) ? TOWING : [...TOWING, [d.towing_kg, `${Number(d.towing_kg).toLocaleString("en-US")} kg`]];
+  const numOrNull = (v) => (v === "" || v == null ? null : Number(v));
+  const toggles = (name, labels, chosen) => Object.entries(labels).map(([k, label]) =>
+    `<button type="button" class="pick" data-${name}="${k}" aria-pressed="${chosen.includes(k)}">${esc(label)}</button>`).join("");
+  const sport = d.sportiness == null ? null : Math.round(d.sportiness * 100);
+
+  const form = h("form", { class: "needs-editor", "aria-label": "Adjust your needs" }, `
+    <label class="field"><span>Budget up to (€)</span>
+      <input name="budget_max" type="number" min="0" step="1000" inputmode="numeric" placeholder="No limit" value="${d.budget_max ?? ""}"></label>
+    <div class="field wide"><span>Powertrain
+        <select name="pt_mode" aria-label="Powertrain strictness">
+          <option value="preferred" ${powertrainMode === "preferred" ? "selected" : ""}>preferred</option>
+          <option value="required" ${powertrainMode === "required" ? "selected" : ""}>required</option></select></span>
+      <div class="picks">${toggles("pt", POWERTRAIN, powertrains)}</div></div>
+    <div class="field wide"><span>Body style</span><div class="picks">${toggles("body", BODY, d.body_styles)}</div></div>
+    <label class="field"><span>Seats, at least</span>
+      <input name="min_seats" type="number" min="2" max="9" placeholder="Any" value="${d.min_seats ?? ""}"></label>
+    <label class="field"><span>Child seats</span>
+      <input name="child_seats" type="number" min="0" max="6" placeholder="None" value="${d.child_seats || ""}"></label>
+    <label class="field"><span>Boot, at least (l)</span>
+      <input name="min_trunk_l" type="number" min="0" max="2000" step="10" placeholder="Any" value="${d.min_trunk_l ?? ""}"></label>
+    <label class="field"><span>Towing</span><select name="towing_kg">
+      ${towing.map(([v, label]) => `<option value="${v ?? ""}" ${v === d.towing_kg ? "selected" : ""}>${esc(label)}</option>`).join("")}</select></label>
+    <label class="field check"><input name="long_distance" type="checkbox" ${d.long_distance ? "checked" : ""}><span>Regular long-distance trips</span></label>
+    <div class="field wide"><span>Comfort or sport <output>${sport == null ? "No preference" : `${sport}% sporty`}</output></span>
+      <input name="sportiness" type="range" min="0" max="100" step="5" value="${sport ?? 50}" aria-label="Comfort to sport"></div>
+    <div class="editor-actions">
+      <button type="button" class="btn secondary small" data-cancel>Cancel</button>
+      <button type="submit" class="btn primary small">Apply</button></div>`);
+
+  const read = () => {
+    const f = form.elements;
+    const pts = [...form.querySelectorAll("[data-pt][aria-pressed=true]")].map((b) => b.dataset.pt);
+    const required = f.pt_mode.value === "required";
+    Object.assign(needsDraft, {
+      budget_max: numOrNull(f.budget_max.value), min_seats: numOrNull(f.min_seats.value),
+      child_seats: numOrNull(f.child_seats.value) || null, min_trunk_l: numOrNull(f.min_trunk_l.value),
+      towing_kg: numOrNull(f.towing_kg.value), long_distance: f.long_distance.checked,
+      powertrain_required: required ? pts : [], powertrain_preferred: required ? [] : pts,
+      body_styles: [...form.querySelectorAll("[data-body][aria-pressed=true]")].map((b) => b.dataset.body),
+    });
+  };
+  form.addEventListener("click", (e) => {
+    const pick = e.target.closest(".pick");
+    if (pick) { pick.setAttribute("aria-pressed", String(pick.getAttribute("aria-pressed") !== "true")); read(); }
+    if (e.target.closest("[data-cancel]")) { needsDraft = null; rerenderStage(); }
+  });
+  form.addEventListener("change", read);  // keep the draft if the stage re-renders while editing
+  form.addEventListener("input", (e) => {
+    if (e.target.name === "sportiness") {
+      needsDraft.sportiness = Number(e.target.value) / 100;
+      form.querySelector("output").textContent = `${e.target.value}% sporty`;
+    }
+  });
+  form.addEventListener("submit", (e) => {
+    e.preventDefault();
+    if (!form.reportValidity()) return;
+    read();
+    const patch = {};
+    for (const [k, v] of Object.entries(needsDraft)) {
+      if (JSON.stringify(v) !== JSON.stringify(saved[k])) patch[k] = v;
+    }
+    needsDraft = null;
+    if (Object.keys(patch).length) updateNeeds(patch); else rerenderStage();
+  });
+  return form;
+}
+
+function showNeedsFeedback(fb) {
+  if (fb.status === "rejected") { toast(fb.error || "Those needs couldn't be saved.", "warning"); return; }
+  if (fb.status === "noop") return;
+  if (fb.unmet.length) toast(`Needs updated. This configuration doesn't meet: ${fb.unmet.join("; ")}`, "warning");
+  else toast("Needs updated. This configuration still meets them.", "ok");
+}
+
 // ------------------------------------------------------------------ option-change feedback (stage)
 
 let conflictIds = new Set();   // options involved in an open conflict (outlined on the stage)
@@ -542,6 +644,7 @@ let flashIds = new Set();      // options that just changed (brief highlight)
 let lastState = null;
 
 function showFeedback(fb) {
+  if (fb.kind === "requirements") { showNeedsFeedback(fb); return; }
   if (fb.status === "conflict" && fb.conflict) { openConflict(fb.conflict); return; }
   if (fb.status === "rejected") { toast(fb.error || "That change isn't possible.", "warning"); return; }
   if (fb.status === "noop") { toast(fb.notes.join(" "), "info"); return; }
