@@ -112,12 +112,12 @@ async function send(payload, echo, { silent = false } = {}) {
   if (busy) return;
   busy = true;
   setBusy(true);
-  if (echo && !silent) renderMessage({ role: "user", text: echo, components: [] });
+  if (echo && !silent) renderMessage({ role: "user", text: echo, components: [] }, { animate: true });
   const typing = silent ? null : showTyping();
   try {
     const body = await api(`/sessions/${sessionId}/turn`, { method: "POST", body: JSON.stringify(payload) });
     typing?.remove();
-    if (body.message) renderMessage(body.message);
+    if (body.message) renderMessage(body.message, { animate: true });
     renderState(body.state);
     if (body.feedback) showFeedback(body.feedback);
     // A conflict caused via the chat is resolved in the same dialog as one caused on the stage.
@@ -191,23 +191,64 @@ function condensePrevious() {
   });
 }
 
-function renderMessage(msg) {
+// Live replies are revealed rather than dropped in: words fade up in reading order, then the
+// cards follow one by one. Restored history (page reload) renders instantly.
+const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
+
+function revealWords(bubble) {
+  const walker = document.createTreeWalker(bubble, NodeFilter.SHOW_TEXT);
+  const nodes = [];
+  while (walker.nextNode()) if (walker.currentNode.nodeValue.trim()) nodes.push(walker.currentNode);
+  const words = [];
+  for (const node of nodes) {
+    const frag = document.createDocumentFragment();
+    for (const part of node.nodeValue.split(/(\s+)/)) {
+      if (!part) continue;
+      if (/^\s+$/.test(part)) { frag.append(part); continue; }
+      const w = h("span", { class: "w" });
+      w.textContent = part;
+      words.push(w);
+      frag.append(w);
+    }
+    node.replaceWith(frag);
+  }
+  // Short replies read at a natural pace; long ones never take more than ~1.4 s to appear.
+  const step = Math.min(32, 1400 / Math.max(words.length, 1));
+  words.forEach((w, i) => { w.style.animationDelay = `${Math.round(i * step)}ms`; });
+  return words.length * step;
+}
+
+function renderMessage(msg, { animate = false } = {}) {
+  animate = animate && !reduceMotion.matches;
   if (msg.role === "assistant") condensePrevious();
-  const wrap = h("div", { class: `msg ${msg.role}` });
-  if (msg.text) wrap.append(h("div", { class: "bubble" }, md(msg.text)));
+  const wrap = h("div", { class: `msg ${msg.role}${animate ? " reveal" : ""}` });
+  let textMs = 0;
+  if (msg.text) {
+    const bubble = h("div", { class: "bubble" }, md(msg.text));
+    if (animate && msg.role === "assistant") textMs = revealWords(bubble);
+    wrap.append(bubble);
+  }
+  let n = 0;
   for (const c of msg.components || []) {
     const el = renderComponent(c);
     if (!el) continue;
     el.dataset.type = c.type;
     if (c.type === "model_cards") el.dataset.hint = c.cards.map((x) => x.name.replace(/^BMW /, "")).join(", ");
+    if (animate) { el.classList.add("rise"); el.style.animationDelay = `${Math.round(textMs * 0.6 + 120 + n++ * 110)}ms`; }
     wrap.append(el);
   }
   els.messages.append(wrap);
   if (msg.role === "user") document.body.classList.add("started");
-  scroll();
+  scroll(animate && msg.role === "assistant" ? wrap : null);
 }
 
-const scroll = () => requestAnimationFrame(() => {
+const scroll = (reply = null) => requestAnimationFrame(() => {
+  if (reply) {
+    // Glide to the new reply, but never past its first line: long answers are read from the top.
+    // scrollIntoView handles both the chat panel and the page (which scrolls on small screens).
+    reply.scrollIntoView({ block: "start", behavior: reduceMotion.matches ? "auto" : "smooth" });
+    return;
+  }
   els.scroll.scrollTop = els.scroll.scrollHeight;
   // On small screens in discover mode the page itself scrolls; keep the composer in view.
   if (layout !== "configure" && window.matchMedia("(max-width: 1000px)").matches) els.form.scrollIntoView({ block: "end" });
@@ -432,10 +473,14 @@ function setLayout(mode) {
 }
 
 function setChatMinimized(on) {
+  const reopening = chatMinimized && !on;
   chatMinimized = on;
   document.body.classList.toggle("chat-min", on);
   els.fab.hidden = !(on && layout === "configure");
-  if (!on) { els.fab.classList.remove("has-new"); scroll(); }
+  if (!on) els.fab.classList.remove("has-new");
+  // Only jump to the latest message when the chat is actually reopened; this also runs on every
+  // state update, and must not undo the scroll that keeps a new reply's first line in view.
+  if (reopening) scroll([...els.messages.querySelectorAll(".msg.assistant")].pop());
 }
 
 // ------------------------------------------------------------------ vehicle stage (configure mode)

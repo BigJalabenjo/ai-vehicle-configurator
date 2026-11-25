@@ -100,7 +100,7 @@ body.started .messages { padding-top: 32px; }
 .needs-bar .assumptions { margin: 0; flex-basis: 100%; }
 
 /* ------------------------------------------------------------------ messages */
-.msg { display: flex; flex-direction: column; gap: 16px; }
+.msg { display: flex; flex-direction: column; gap: 16px; scroll-margin-top: 24px; }
 .msg.assistant .bubble { font-size: 16px; line-height: 1.6; max-width: 720px; }
 .msg.user { align-items: flex-end; }
 .msg.user .bubble { background: var(--bg-2); padding: 12px 18px; border-radius: var(--radius); max-width: 560px; font-weight: 400; }
@@ -408,6 +408,18 @@ body.mode-configure .stage { opacity: 1; transform: none; transition-delay: .15s
 .dialog-actions { display: flex; flex-wrap: wrap; gap: 10px; }
 @keyframes fade-in { from { opacity: 0; } }
 @keyframes pop-in { from { opacity: 0; transform: translateY(12px) scale(.98); } }
+
+/* replies are revealed, not dropped in (see renderMessage) */
+.msg.user.reveal { animation: msg-in .35s cubic-bezier(.2,.7,.3,1) both; }
+.msg.assistant.reveal .w { display: inline-block; animation: word-in .45s cubic-bezier(.2,.7,.3,1) both; }
+.msg.assistant.reveal .rise { animation: rise-in .5s cubic-bezier(.2,.7,.3,1) both; }
+.typing { animation: fade-in .3s .15s both; }
+@keyframes msg-in { from { opacity: 0; transform: translateY(8px); } }
+@keyframes word-in { from { opacity: 0; transform: translateY(.35em); filter: blur(2px); } }
+@keyframes rise-in { from { opacity: 0; transform: translateY(14px); } }
+@media (prefers-reduced-motion: reduce) {
+  .msg.reveal, .msg.reveal .w, .msg.reveal .rise, .typing { animation: none !important; }
+}
 
 /* tiles involved in a conflict, and tiles that just changed */
 .tile.conflicting { border-color: var(--warn); box-shadow: inset 0 0 0 1px var(--warn), 0 0 0 4px rgba(240, 140, 0, .15); }
