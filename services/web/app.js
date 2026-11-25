@@ -6,9 +6,8 @@ const API = "/api";
 const $ = (sel) => document.querySelector(sel);
 const els = {
   messages: $("#messages"), scroll: $("#scroll"), form: $("#composer"), input: $("#input"), send: $("#send"),
-  mode: $("#mode"), needs: $("#needs"), assumptions: $("#assumptions"),
+  needs: $("#needs"), assumptions: $("#assumptions"),
   assumptionsBox: $("#assumptions-box"), newSession: $("#new-session"),
-  signOut: $("#sign-out"),
   stage: $("#stage"), chatMin: $("#chat-min"), fab: $("#chat-fab"), needsBar: $("#needs-bar"),
 };
 
@@ -90,7 +89,6 @@ async function startSession() {
   try { localStorage.setItem("sessionId", sessionId); } catch { /* storage unavailable */ }
   els.messages.innerHTML = "";
   document.body.classList.remove("started");
-  setMode(body.mode);
   renderMessage(body.message);
   renderState(body.state);
 }
@@ -102,20 +100,12 @@ async function restoreSession() {
   try {
     const body = await api(`/sessions/${saved}`);
     sessionId = saved;
-    setMode(body.mode);
     els.messages.innerHTML = "";
     body.transcript.forEach((m) => renderMessage(m));
     renderState(body.state);
   } catch {
     await startSession();
   }
-}
-
-const MODE_LABELS = { openai: "AI agent (OpenAI)", anthropic: "AI agent (Claude)", guided: "Guided mode (offline)" };
-
-function setMode(mode) {
-  els.mode.textContent = MODE_LABELS[mode] || mode;
-  els.mode.className = "mode " + mode;
 }
 
 async function send(payload, echo, { silent = false } = {}) {
@@ -127,7 +117,6 @@ async function send(payload, echo, { silent = false } = {}) {
   try {
     const body = await api(`/sessions/${sessionId}/turn`, { method: "POST", body: JSON.stringify(payload) });
     typing?.remove();
-    setMode(body.mode);
     if (body.message) renderMessage(body.message);
     renderState(body.state);
     if (body.feedback) showFeedback(body.feedback);
@@ -517,10 +506,9 @@ function renderStage(v, state) {
     }
   };
   for (const cat of cats) {
-    const chosen = groups[cat].filter((o) => o.state === "selected" || o.state === "included").length;
     const flagged = groups[cat].some((o) => conflictIds.has(o.id));
     tabs.append(h("button", { type: "button", role: "tab", "data-cat": cat, class: flagged ? "conflicting" : "", onclick: () => showCat(cat) },
-      `${esc(cat)}${chosen ? `<span class="count">${chosen}</span>` : ""}`));
+      esc(cat)));
   }
   showCat(activeCat);
   els.stage.querySelector("#review").addEventListener("click", () => {
@@ -620,12 +608,6 @@ els.input.addEventListener("keydown", (e) => {
 });
 els.chatMin.addEventListener("click", () => setChatMinimized(true));
 els.fab.addEventListener("click", () => setChatMinimized(false));
-fetch("/api/auth/status").then((r) => r.json()).then((s) => { els.signOut.hidden = !s.enabled; }).catch(() => {});
-els.signOut.addEventListener("click", async () => {
-  await fetch("/api/auth/logout", { method: "POST" }).catch(() => {});
-  try { localStorage.removeItem("sessionId"); } catch { /* storage unavailable */ }
-  location.replace("/login.html");
-});
 els.newSession.addEventListener("click", () => { if (!busy) startSession().catch((e) => renderError(e.message)); });
 
 // Optional brand assets: assets/manifest.json lists what exists (generated at image build time).

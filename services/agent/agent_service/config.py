@@ -38,6 +38,8 @@ class Settings:
     app_password: str | None = field(default_factory=lambda: os.getenv("APP_PASSWORD") or None)
     app_secret: str | None = field(default_factory=lambda: os.getenv("APP_SECRET") or None)
     auth_ttl_h: float = field(default_factory=lambda: float(os.getenv("AUTH_TTL_HOURS", "12")))
+    # Sites allowed to embed the app (Chrome extension overlay), space-separated, e.g. "https://configure.bmw.de".
+    embed_origins: list[str] = field(default_factory=lambda: os.getenv("EMBED_ORIGINS", "").split())
 
     @property
     def provider(self) -> str | None:

@@ -35,6 +35,9 @@ class Auth:
     def __init__(self, cfg: Settings):
         self.password = cfg.app_password
         self.ttl_s = int(cfg.auth_ttl_h * 3600)
+        # Embedded in another site (extension overlay): the cookie lives in a third-party frame, which
+        # Chrome only allows as SameSite=None; Secure; Partitioned (CHIPS: keyed to the embedding site).
+        self.embedded = bool(cfg.embed_origins)
         # Key for signing cookies. Derived from APP_SECRET (stable across restarts) plus the password,
         # so changing the password signs everyone out. Without APP_SECRET a random key is used and
         # sessions end when the service restarts.
@@ -74,6 +77,21 @@ def secure_request(request: Request) -> bool:
     return request.url.scheme == "https" or request.headers.get("x-forwarded-proto", "") == "https"
 
 
+def cookie_attrs(auth: Auth, request: Request) -> dict:
+    if auth.embedded:
+        # Secure is required for SameSite=None; browsers accept it on http://localhost as well.
+        return {"httponly": True, "samesite": "none", "secure": True}
+    return {"httponly": True, "samesite": "strict", "secure": secure_request(request)}
+
+
+def set_session_cookie(resp: Response, auth: Auth, request: Request, value: str, max_age: int) -> None:
+    resp.set_cookie(COOKIE, value, max_age=max_age, expires=max_age if max_age else 0, path="/", **cookie_attrs(auth, request))
+    if auth.embedded:
+        # "Partitioned" (CHIPS) is added by hand: Starlette only supports it on Python 3.14+.
+        resp.raw_headers = [(k, v + b"; Partitioned") if k == b"set-cookie" and v.startswith(COOKIE.encode() + b"=") else (k, v)
+                            for k, v in resp.raw_headers]
+
+
 def router(auth: Auth) -> APIRouter:
     r = APIRouter(prefix="/api/auth")
 
@@ -94,14 +112,13 @@ def router(auth: Auth) -> APIRouter:
             await asyncio.sleep(0.8)  # slows down guessing; nginx also rate-limits this endpoint
             return JSONResponse(status_code=401, content={"detail": "Incorrect password."})
         resp = Response(status_code=204)
-        resp.set_cookie(COOKIE, auth.issue(), max_age=auth.ttl_s, httponly=True, samesite="strict",
-                        secure=secure_request(request), path="/")
+        set_session_cookie(resp, auth, request, auth.issue(), auth.ttl_s)
         return resp
 
     @r.post("/logout")
     async def logout(request: Request):
         resp = Response(status_code=204)
-        resp.delete_cookie(COOKIE, path="/", httponly=True, samesite="strict", secure=secure_request(request))
+        set_session_cookie(resp, auth, request, "", 0)
         return resp
 
     return r

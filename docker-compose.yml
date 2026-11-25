@@ -27,6 +27,7 @@ services:
       APP_PASSWORD: ${APP_PASSWORD:-}
       APP_SECRET: ${APP_SECRET:-}
       AUTH_TTL_HOURS: ${AUTH_TTL_HOURS:-12}
+      EMBED_ORIGINS: ${EMBED_ORIGINS:-}
       CORS_ORIGINS: http://localhost:8080
     expose: ["8000"]
     restart: unless-stopped
@@ -36,6 +37,8 @@ services:
     depends_on:
       agent:
         condition: service_healthy
+    environment:
+      EMBED_ORIGINS: ${EMBED_ORIGINS:-}
     ports:
       - "8080:8080"
     restart: unless-stopped

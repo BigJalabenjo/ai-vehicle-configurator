@@ -71,6 +71,10 @@ Set `APP_PASSWORD` (and `APP_SECRET`) in `.env` and restart. Every page then red
 * **Protection is enforced twice:** nginx checks the session before serving pages and vehicle photos (`auth_request`), and the agent API rejects unauthenticated calls itself. Only the sign-in page, styles, logo/fonts, `/api/auth/*` and `/api/health` are public.
 * **Serve it over HTTPS when you publish** (e.g. behind a reverse proxy or a load balancer with TLS), so the password and cookie are never sent in clear text.
 
+### Chrome extension: open the assistant on bmw.de
+
+[`extensions/chrome`](extensions/chrome) adds an **AI mode** switch to the BMW configurator (`configure.bmw.de/…/configure/…`). Switching it on reveals this app as an overlay on top of the configurator. Set `EMBED_ORIGINS=https://configure.bmw.de` in `.env` so the app may be shown there, then load the folder as an unpacked extension (`chrome://extensions` → Developer mode → Load unpacked). With a local app, Chrome asks once whether the configurator may access your local network; click **Allow**. Details in the [extension README](extensions/chrome/README.md).
+
 ## 2. Demo script (about 5 minutes)
 
 This works in either mode. The wording below matches guided mode.

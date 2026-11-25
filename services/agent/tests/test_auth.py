@@ -74,3 +74,13 @@ async def test_forged_or_expired_tokens_are_rejected():
     # changing the password invalidates existing sessions
     other = Auth(Settings(app_password="new-password", app_secret="test-secret"))  # type: ignore[arg-type]
     assert not other.valid(good)
+
+
+async def test_embedded_mode_uses_partitioned_cross_site_cookie(catalog_client):
+    cfg = Settings(agent_mode="offline", app_password=PASSWORD, app_secret="s",  # type: ignore[arg-type]
+                   embed_origins=["https://configure.bmw.de"])
+    app = create_app(Runtime(catalog=catalog_client, cfg=cfg))
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://agent") as c:
+        r = await c.post("/api/auth/login", json={"password": PASSWORD})
+        cookie = r.headers["set-cookie"].lower()
+        assert "samesite=none" in cookie and "secure" in cookie and "partitioned" in cookie and "httponly" in cookie

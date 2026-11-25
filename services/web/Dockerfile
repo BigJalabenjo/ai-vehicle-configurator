@@ -1,5 +1,7 @@
 FROM nginx:1.27-alpine
-COPY nginx.conf /etc/nginx/conf.d/default.conf
+# Rendered at container start: ${EMBED_ORIGINS} is filled in from the environment (nginx image templates).
+COPY nginx.conf /etc/nginx/templates/default.conf.template
+ENV EMBED_ORIGINS=""
 COPY index.html app.js login.html login.js styles.css /usr/share/nginx/html/
 # Optional brand assets (logo, fonts); see assets/README.md
 COPY assets /usr/share/nginx/html/assets

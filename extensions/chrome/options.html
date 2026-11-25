@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Configurator Assistant · Settings</title>
+  <style>
+    body { margin: 0; padding: 20px 24px; min-width: 380px; font: 14px/1.5 "Helvetica Neue", Arial, sans-serif; color: #262626; }
+    h1 { font-size: 18px; font-weight: 400; margin: 0 0 12px; }
+    label { display: block; font-size: 12px; color: #666; margin-bottom: 4px; }
+    input { width: 100%; box-sizing: border-box; height: 40px; padding: 0 10px; border: 1px solid #bbb; border-radius: 3px; font: inherit; }
+    .row { display: flex; gap: 8px; align-items: center; margin-top: 12px; }
+    button { height: 36px; padding: 0 16px; border: 0; border-radius: 3px; background: #1c69d4; color: #fff; font: inherit; font-weight: 500; cursor: pointer; }
+    .status { color: #20a54f; font-size: 13px; }
+    p { color: #666; font-size: 12px; margin: 12px 0 0; }
+  </style>
+</head>
+<body>
+  <h1>Configurator Assistant</h1>
+  <label for="url">App address</label>
+  <input id="url" type="url" placeholder="http://localhost:8080">
+  <div class="row"><button id="save" type="button">Save</button><span id="status" class="status"></span></div>
+  <p>The app must allow being shown in the BMW configurator: set <code>EMBED_ORIGINS=https://configure.bmw.de</code> in its .env.</p>
+  <script src="options.js"></script>
+</body>
+</html>

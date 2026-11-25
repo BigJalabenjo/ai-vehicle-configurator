@@ -61,10 +61,6 @@ svg { flex: none; }
 .brand-divider { width: 1px; height: 24px; background: var(--line-strong); }
 .product { font-size: 16px; font-weight: 400; }
 .topbar-actions { display: flex; align-items: center; gap: 28px; }
-.mode { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text-2); }
-.mode::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--text-3); }
-.mode.openai::before, .mode.anthropic::before { background: var(--ok); }
-.mode.guided::before { background: var(--warn); }
 
 /* ------------------------------------------------------------------ layout */
 /* Two columns that animate between modes. Only the chat column's width animates; the stage
@@ -271,7 +267,6 @@ body.busy .scroll { cursor: progress; }
   .product { font-size: 14px; }
   .brand { gap: 10px; }
   .topbar-actions { gap: 14px; }
-  .mode { font-size: 0; gap: 0; }            /* keep only the status dot */
   .text-btn { font-size: 0; }                 /* icon only */
   .text-btn svg { width: 22px; height: 22px; }
   .hero { padding-top: 28px; }
@@ -327,7 +322,6 @@ body.mode-configure .stage { opacity: 1; transform: none; transition-delay: .15s
 .tabs button { flex: none; background: none; border: 0; border-bottom: 2px solid transparent; padding: 12px 0; font-size: 15px; color: var(--text-2); display: inline-flex; align-items: center; gap: 6px; }
 .tabs button:hover { color: var(--text); }
 .tabs button[aria-selected="true"] { color: var(--text); border-bottom-color: var(--text); font-weight: 400; }
-.tabs .count { min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; background: var(--text); color: #fff; font-size: 11px; display: inline-flex; align-items: center; justify-content: center; }
 
 .tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 12px; padding: 20px 0 28px; }
 .tile { display: grid; grid-template-columns: 20px 1fr; grid-template-areas: "check name" ". note" ". price"; gap: 4px 12px; align-content: start;
