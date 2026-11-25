@@ -111,6 +111,34 @@ def component_summary(c: dict) -> dict:
     return out
 
 
+# Plain-language names for the check list
+MODEL_NAMES: dict[str, str] = {}  # model id -> name, filled from the catalog in main()
+POWERTRAIN_NAMES = {"bev": "electric", "phev": "plug-in hybrid", "petrol": "petrol", "diesel": "diesel"}
+ORDINALS = ["First", "Second", "Third", "Fourth", "Fifth", "Sixth"]
+CARDS = {"model_cards": "car recommendations", "tradeoffs": "trade-off suggestions", "conflict": "the conflict dialog",
+         "question": "a question", "option_toggles": "option suggestions", "comparison": "a comparison",
+         "summary": "the summary", "notice": "a notice", "slider": "the comfort/sport slider"}
+
+
+def need_label(key: str, value) -> str:
+    """The same wording the app shows under "Your needs", e.g. "3 child seats" or "Budget up to €85,000"."""
+    from agent_service.domain import Requirements
+    try:
+        labels = dict(Requirements().merged({key: value}).describe())
+    except (ValueError, TypeError):
+        labels = {}
+    label = labels.get(key, f"{key.replace('_', ' ')} = {value}")
+    return label[0].lower() + label[1:]
+
+
+def card_label(t: str) -> str:
+    return CARDS.get(t, t.replace("_", " "))
+
+
+def cards_label(types: list[str]) -> str:
+    return ", ".join(card_label(t) for t in types) or "only text"
+
+
 def final_summary(state: dict) -> dict:
     v = state["configuration"]
     return {"needs": [r["label"] for r in state["requirements"]],
@@ -137,27 +165,34 @@ async def run_case(client: httpx.AsyncClient, case: dict, catalog_numbers: set[i
     checks: list[tuple[str, bool, str]] = []
 
     for key, want in exp.get("requirements", {}).items():
-        checks.append((f"need {key} = {want}", values.get(key) == want, f"got {values.get(key)!r}"))
+        got = values.get(key)
+        checks.append((f"Understood: {need_label(key, want)}", got == want,
+                       f"it understood: {need_label(key, got) if got not in (None, False, 0, []) else 'nothing'}"))
     if pt := exp.get("powertrain_includes"):
         got = values["powertrain_required"] + values["powertrain_preferred"]
-        checks.append((f"powertrain includes {pt}", pt in got, f"got {got}"))
+        checks.append((f"Understood: wants {POWERTRAIN_NAMES.get(pt, pt)}", pt in got,
+                       f"it understood: {', '.join(POWERTRAIN_NAMES.get(p, p) for p in got) or 'no powertrain preference'}"))
     for t in exp.get("components_in_last_reply", []):
-        checks.append((f"shows {t}", t in last_types, f"shown: {last_types}"))
+        checks.append((f"Showed {card_label(t)}", t in last_types, f"it showed: {cards_label(last_types)}"))
     if any_of := exp.get("components_in_last_reply_any"):
-        checks.append((f"shows one of {any_of}", bool(set(any_of) & set(last_types)), f"shown: {last_types}"))
+        checks.append((f"Showed {' or '.join(card_label(t) for t in any_of)}", bool(set(any_of) & set(last_types)),
+                       f"it showed: {cards_label(last_types)}"))
     if exp.get("recommends_right_away"):
         # A follow-up question next to the recommendations is fine; asking back *instead* of recommending is not.
         first_types = [c["type"] for c in replies[0]["message"]["components"]]
-        checks.append(("recommends right away instead of asking back", "model_cards" in first_types, f"shown: {first_types}"))
+        checks.append(("Recommended cars right away instead of asking back", "model_cards" in first_types,
+                       f"its first reply showed: {cards_label(first_types)}"))
     if model := exp.get("model_id"):
         got = config and config["model_id"]
-        checks.append((f"configures {model}", got == model, f"got {got}"))
+        checks.append((f"Configured the {MODEL_NAMES.get(model, model)}", got == model,
+                       f"it configured: {MODEL_NAMES.get(got, got) if got else 'no car'}"))
     if exp.get("configuration_valid"):
-        checks.append(("configuration is valid", bool(config and config["valid"]), "no configuration" if not config else
+        checks.append(("Final configuration is valid", bool(config and config["valid"]), "no car was configured" if not config else
                        "; ".join(i["message"] for i in config["issues"])))
     if words := exp.get("reply_mentions_any"):
         text = last["message"]["text"].lower().replace("\u2019", "'")  # typographic apostrophes
-        checks.append(("reply says it isn't possible", any(w in text for w in words), last["message"]["text"][:120]))
+        checks.append(("Said the request isn't possible", any(w in text for w in words),
+                       f"it replied: {last['message']['text'][:160]}"))
 
     # Grounding: every euro amount the model writes must come from the data, never be made up.
     for i, reply in enumerate(replies):
@@ -165,7 +200,9 @@ async def run_case(client: httpx.AsyncClient, case: dict, catalog_numbers: set[i
         allowed = (catalog_numbers | numbers_in(reply["state"]) | numbers_in(reply["message"]["components"])
                    | numbers_in(case["messages"][: i + 1]))
         invented = [a for a in euro_amounts(reply["message"]["text"]) if a not in allowed]
-        checks.append((f"reply {i + 1}: no invented prices", not invented, f"unknown amounts: {invented}"))
+        which = f"{ORDINALS[i]} reply" if len(replies) > 1 else "Reply"
+        checks.append((f"{which}: no made-up prices", not invented,
+                       "prices not found in the data: " + ", ".join(f"€{a:,}" for a in invented)))
     return checks
 
 
@@ -189,7 +226,9 @@ async def main() -> int:
 
     cfg = Settings(agent_mode="llm", llm_provider="openai", app_password=None)  # type: ignore[arg-type]
     catalog = CatalogClient("http://catalog", transport=httpx.ASGITransport(app=catalog_app))
-    catalog_numbers = numbers_in(await catalog.catalog())
+    catalog_data = await catalog.catalog()
+    catalog_numbers = numbers_in(catalog_data)
+    MODEL_NAMES.update({m["id"]: m["name"] for m in catalog_data["models"]})
     app = create_app(Runtime(catalog=catalog, cfg=cfg))
     cases = json.loads((HERE / "cases.json").read_text())
     only = set(sys.argv[1:])
