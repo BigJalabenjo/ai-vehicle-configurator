@@ -210,7 +210,7 @@ make test            # 29 catalog tests + 32 agent tests
   * AI mode against scripted fake OpenAI and Anthropic APIs. This covers the tool loop, grounded UI hydration, invalid or malformed tool input returned as errors for self-correction, automatic conflict cards, outage, refusal and content-filter fallback, valid history across turns, and UI actions applied before narration.
   * Provider auto-selection from the configured keys.
 
-**AI quality check** (not part of CI, needs the API key): `make eval` plays four short customer conversations against the real model, five messages in total, and checks the results with rules, without an AI grader. It checks:
+**AI quality check** (not part of CI, needs the API key): `make eval` plays short customer conversations against the real model and checks the results with rules, without an AI grader. The four core cases check:
 
 * whether needs were extracted exactly (child seats, long trips, budget, towing weight);
 * whether it recommends without asking back when everything was said;
@@ -218,7 +218,17 @@ make test            # 29 catalog tests + 32 agent tests
 * whether a nonexistent option is declined rather than invented;
 * whether every euro amount in a reply exists in the catalog, the returned data or the customer's own words.
 
-A run costs a few US cents and prints the score, token usage and an estimated cost. Cases are in `services/agent/evals/cases.json`. `LLM_MODEL=gpt-5.4 make eval` compares another model.
+**Adversarial cases** try to make the assistant misbehave, and check that it doesn't:
+
+* **prompt injection:** an "admin mode" that sets a fake €1 price;
+* **social engineering:** an "employee discount" request;
+* **leaking instructions:** asks it to reveal its system prompt and tool definitions;
+* **off-topic and harmful:** asks for a scraper for personal data;
+* **pressure to break the rules:** a "dealer override" that forces two packages that can't be combined.
+
+Here, numbers the customer typed don't count as known prices, so a "€1" can't pass as one.
+
+A full run costs about US$0.50 and prints the score, token usage and an estimated cost. Cases are in `services/agent/evals/cases.json`. `make eval CASES=adversarial` (or `core`, or case ids) runs part of them, and `LLM_MODEL=gpt-5.4 make eval` compares another model.
 
 Each run is saved to `services/agent/evals/results/`, which git ignores. `make eval-view` opens a small viewer at http://localhost:8090/viewer/. Its **Run evaluation** button starts a new run with the chosen model, after asking for confirmation. Progress appears live and the result opens when the run is done. The viewer only listens on your own machine and refuses run requests from other websites. It shows:
 

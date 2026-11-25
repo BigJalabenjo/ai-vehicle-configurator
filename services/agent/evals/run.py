@@ -2,6 +2,7 @@
 the outcome with rules (no AI grader), so one run costs only a few cents.
 
     make eval                      # from the repository root; reads OPENAI_API_KEY from .env
+    make eval CASES=adversarial    # only one group ("core" or "adversarial"), or case ids
     LLM_MODEL=gpt-5.4 make eval    # compare another model
 
 What is checked per case (see cases.json): extracted needs, chosen model, cards shown, conflicts surfaced,
@@ -112,7 +113,8 @@ def component_summary(c: dict) -> dict:
 
 
 # Plain-language names for the check list
-MODEL_NAMES: dict[str, str] = {}  # model id -> name, filled from the catalog in main()
+MODEL_NAMES: dict[str, str] = {}   # model id -> name, filled from the catalog in main()
+OPTION_NAMES: dict[str, str] = {}  # option id -> name, filled from the catalog in main()
 POWERTRAIN_NAMES = {"bev": "electric", "phev": "plug-in hybrid", "petrol": "petrol", "diesel": "diesel"}
 ORDINALS = ["First", "Second", "Third", "Fourth", "Fifth", "Sixth"]
 CARDS = {"model_cards": "car recommendations", "tradeoffs": "trade-off suggestions", "conflict": "the conflict dialog",
@@ -129,6 +131,10 @@ def need_label(key: str, value) -> str:
         labels = {}
     label = labels.get(key, f"{key.replace('_', ' ')} = {value}")
     return label[0].lower() + label[1:]
+
+
+def all_text(replies: list[dict]) -> str:
+    return " ".join(r["message"]["text"] for r in replies).lower().replace("\u2019", "'")
 
 
 def card_label(t: str) -> str:
@@ -194,11 +200,21 @@ async def run_case(client: httpx.AsyncClient, case: dict, catalog_numbers: set[i
         checks.append(("Said the request isn't possible", any(w in text for w in words),
                        f"it replied: {last['message']['text'][:160]}"))
 
+    if bad := exp.get("must_not_say"):
+        said = [p for p in bad["phrases"] if p.lower() in all_text(replies)]
+        checks.append((bad["label"], not said, "its reply contained: " + ", ".join(f'"{p}"' for p in said)))
+    if together := exp.get("options_not_together"):
+        chosen = {o["id"] for o in (config or {}).get("catalog_options", []) if o["state"] in ("selected", "included")}
+        names = " and ".join(OPTION_NAMES.get(o, o) for o in together)
+        checks.append((f"Didn't combine {names}", not set(together) <= chosen, "both are in the configuration"))
+
     # Grounding: every euro amount the model writes must come from the data, never be made up.
     for i, reply in enumerate(replies):
-        # Allowed: catalog data, the data the back end returned with this reply (state, cards), the customer's words.
-        allowed = (catalog_numbers | numbers_in(reply["state"]) | numbers_in(reply["message"]["components"])
-                   | numbers_in(case["messages"][: i + 1]))
+        # Allowed: catalog data, the data the back end returned with this reply (state, cards) and - unless the case
+        # is about fake numbers - the customer's own words.
+        allowed = catalog_numbers | numbers_in(reply["state"]) | numbers_in(reply["message"]["components"])
+        if not exp.get("distrust_customer_numbers"):
+            allowed |= numbers_in(case["messages"][: i + 1])
         invented = [a for a in euro_amounts(reply["message"]["text"]) if a not in allowed]
         which = f"{ORDINALS[i]} reply" if len(replies) > 1 else "Reply"
         checks.append((f"{which}: no made-up prices", not invented,
@@ -227,12 +243,20 @@ async def main() -> int:
     cfg = Settings(agent_mode="llm", llm_provider="openai", app_password=None)  # type: ignore[arg-type]
     catalog = CatalogClient("http://catalog", transport=httpx.ASGITransport(app=catalog_app))
     catalog_data = await catalog.catalog()
-    catalog_numbers = numbers_in(catalog_data)
+    # Small numbers in the catalog are seat counts, ranges in a name etc., never prices (the cheapest option costs €300),
+    # so "€1" can't pass as a catalog price.
+    catalog_numbers = {n for n in numbers_in(catalog_data) if n >= 100}
     MODEL_NAMES.update({m["id"]: m["name"] for m in catalog_data["models"]})
+    OPTION_NAMES.update({o["id"]: o["name"] for o in catalog_data["options"]})
     app = create_app(Runtime(catalog=catalog, cfg=cfg))
-    cases = json.loads((HERE / "cases.json").read_text())
+    # Arguments pick cases: a group name ("core", "adversarial") or case ids; none = all cases.
     only = set(sys.argv[1:])
-    print(f"Model {cfg.llm_model}, {len([c for c in cases if not only or c['id'] in only])} cases\n")
+    cases = [c for c in json.loads((HERE / "cases.json").read_text())
+             if not only or c["id"] in only or c.get("group", "core") in only]
+    if not cases:
+        print(f"No cases match {' '.join(sorted(only))}")
+        return 2
+    print(f"Model {cfg.llm_model}, {len(cases)} cases\n")
 
     pin, pout = PRICES.get(cfg.llm_model, PRICES["gpt-5.5"])
 
@@ -246,8 +270,6 @@ async def main() -> int:
     started = time.perf_counter()
     async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://agent") as client:
         for case in cases:
-            if only and case["id"] not in only:
-                continue
             print(f"● {case['id']}: {case['about']}")
             transcript: list[dict] = []
             first_call, t0 = len(usage.calls), time.perf_counter()
@@ -262,13 +284,14 @@ async def main() -> int:
             total += len(checks)
             print()
             results.append({
-                "id": case["id"], "about": case["about"], "expect": case["expect"],
+                "id": case["id"], "group": case.get("group", "core"), "about": case["about"], "expect": case["expect"],
                 "checks": [{"name": n, "ok": ok, "detail": d} for n, ok, d in checks],
                 "transcript": transcript, "final": LAST_STATE.pop(case["id"], None),
                 "seconds": round(time.perf_counter() - t0, 1), "usage": tokens(usage.calls[first_call:]),
             })
 
-    run = {"started_at": started_at.isoformat(timespec="seconds"), "model": cfg.llm_model,
+    groups = sorted({c.get("group", "core") for c in cases})
+    run = {"started_at": started_at.isoformat(timespec="seconds"), "model": cfg.llm_model, "groups": groups,
            "effort": cfg.llm_effort, "seconds": round(time.perf_counter() - started, 1),
            "passed": passed, "total": total, "usage": tokens(usage.calls), "cases": results}
     path = save_run(run)
@@ -300,7 +323,7 @@ def save_run(run: dict) -> Path:
             continue
         index.append({"file": f.name, "started_at": r["started_at"], "model": r["model"], "passed": r["passed"],
                       "total": r["total"], "cost_usd": r["usage"]["cost_usd"], "seconds": r["seconds"],
-                      "cases": len(r["cases"])})
+                      "cases": len(r["cases"]), "groups": r.get("groups", ["core"])})
     (RESULTS / "index.json").write_text(json.dumps(index, indent=1))
     return path
 

@@ -13,8 +13,8 @@ test:
 	cd services/catalog && ../../.venv/bin/python -m pytest -q
 	cd services/agent && ../../.venv/bin/python -m pytest -q
 
-eval:          ## tiny quality check against the real model (a few cents; reads OPENAI_API_KEY from .env)
-	cd services/agent && ../../.venv/bin/python -m evals.run
+eval:          ## quality check against the real model, ~$0.50 (CASES=core|adversarial|<ids>; reads OPENAI_API_KEY from .env)
+	cd services/agent && ../../.venv/bin/python -m evals.run $(CASES)
 
 eval-view:     ## browse eval runs and start new ones on http://localhost:8090/viewer/
 	.venv/bin/python services/agent/evals/serve.py

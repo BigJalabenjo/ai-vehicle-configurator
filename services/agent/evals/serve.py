@@ -21,6 +21,7 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 PORT = int(os.getenv("EVAL_VIEW_PORT", "8090"))
 MODELS = ["gpt-5.5", "gpt-5.4"]
+CASE_SETS = {"all": [], "core": ["core"], "adversarial": ["adversarial"]}  # arguments for evals.run
 
 
 class Runner:
@@ -39,13 +40,13 @@ class Runner:
         return {"running": running, "model": self.model, "exit_code": None if running else self.exit_code,
                 "seconds": round(time.time() - self.started) if self.started else 0, "lines": self.lines[-200:]}
 
-    def start(self, model: str) -> bool:
+    def start(self, model: str, case_set: str) -> bool:
         with self.lock:
             if self.proc is not None and self.proc.poll() is None:
                 return False
             env = {**os.environ, "LLM_MODEL": model, "PYTHONUNBUFFERED": "1"}
             self.lines, self.started, self.model, self.exit_code = [], time.time(), model, None
-            self.proc = subprocess.Popen([sys.executable, "-m", "evals.run"], cwd=HERE.parent, env=env,
+            self.proc = subprocess.Popen([sys.executable, "-m", "evals.run", *CASE_SETS[case_set]], cwd=HERE.parent, env=env,
                                          stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1)
             threading.Thread(target=self._read, args=(self.proc,), daemon=True).start()
             return True
@@ -90,7 +91,7 @@ class Handler(SimpleHTTPRequestHandler):
             self.send_header("location", "/viewer/")
             self.end_headers()
         elif self.path == "/api/status":
-            self._json(200, {**runner.status(), "models": MODELS})
+            self._json(200, {**runner.status(), "models": MODELS, "case_sets": list(CASE_SETS)})
         else:
             super().do_GET()
 
@@ -106,7 +107,10 @@ class Handler(SimpleHTTPRequestHandler):
         model = body.get("model") or MODELS[0]
         if model not in MODELS:
             return self._json(400, {"error": f"Unknown model {model!r}"})
-        if not runner.start(model):
+        case_set = body.get("cases") or "all"
+        if case_set not in CASE_SETS:
+            return self._json(400, {"error": f"Unknown case set {case_set!r}"})
+        if not runner.start(model, case_set):
             return self._json(409, {"error": "A run is already in progress."})
         self._json(202, runner.status())
 
