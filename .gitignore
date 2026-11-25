@@ -11,3 +11,6 @@ services/web/assets/fonts/*
 !services/web/assets/fonts/.gitkeep
 services/web/assets/cars/*
 !services/web/assets/cars/.gitkeep
+
+# eval runs (local, vary per run)
+services/agent/evals/results/

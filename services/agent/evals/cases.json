@@ -1,0 +1,51 @@
+[
+  {
+    "id": "family_ev",
+    "about": "All needs given at once: extract them and recommend straight away",
+    "messages": [
+      "We're a family with three kids, we often drive long distances, we'd like an electric car and can spend at most 85,000 euros."
+    ],
+    "expect": {
+      "requirements": {"child_seats": 3, "long_distance": true, "budget_max": 85000},
+      "powertrain_includes": "bev",
+      "components_in_last_reply": ["model_cards"],
+      "recommends_right_away": true
+    }
+  },
+  {
+    "id": "towing",
+    "about": "A hard technical need (towing weight) and a budget are captured exactly",
+    "messages": [
+      "I need to tow a 1,800 kg caravan and my budget is 70,000 euros. What would you suggest?"
+    ],
+    "expect": {
+      "requirements": {"towing_kg": 1800, "budget_max": 70000},
+      "components_in_last_reply_any": ["model_cards", "tradeoffs"]
+    }
+  },
+  {
+    "id": "conflict",
+    "about": "Two packages that can't be combined: the conflict is surfaced, nothing invalid is configured",
+    "messages": [
+      "Please configure the BMW i5 Touring eDrive40 for me.",
+      "Add both the M Sport Package and the Travel & Comfort Package."
+    ],
+    "expect": {
+      "model_id": "i5_touring_edrive40",
+      "components_in_last_reply": ["conflict"],
+      "configuration_valid": true
+    }
+  },
+  {
+    "id": "nonsense_option",
+    "about": "An option that doesn't exist is not invented",
+    "messages": [
+      "Please configure the BMW iX1 xDrive30 and add a rocket booster to it."
+    ],
+    "expect": {
+      "model_id": "ix1_xdrive30",
+      "configuration_valid": true,
+      "reply_mentions_any": ["not", "no ", "isn't", "unfortunately", "unavailable", "doesn't"]
+    }
+  }
+]

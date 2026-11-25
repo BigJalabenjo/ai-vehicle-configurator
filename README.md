@@ -201,7 +201,7 @@ The tests need no Docker and no API key. They run the agent against the **real**
 
 ```bash
 make dev-install     # creates .venv with pinned dependencies
-make test            # 28 catalog tests + 21 agent tests
+make test            # 29 catalog tests + 32 agent tests
 ```
 
 * **Catalog tests** (`services/catalog/tests`): every rule type, conflicts and resolutions, invalid options, savings, model switching, recommendation ranking, trade-offs for unsatisfiable needs, API error codes, and the catalog integrity check.
@@ -209,6 +209,23 @@ make test            # 28 catalog tests + 21 agent tests
   * The full demo journey in guided mode.
   * AI mode against scripted fake OpenAI and Anthropic APIs. This covers the tool loop, grounded UI hydration, invalid or malformed tool input returned as errors for self-correction, automatic conflict cards, outage, refusal and content-filter fallback, valid history across turns, and UI actions applied before narration.
   * Provider auto-selection from the configured keys.
+
+**AI quality check** (not part of CI, needs the API key): `make eval` plays four short customer conversations against the real model, five messages in total, and checks the results with rules, without an AI grader. It checks:
+
+* whether needs were extracted exactly (child seats, long trips, budget, towing weight);
+* whether it recommends without asking back when everything was said;
+* whether a conflict between two packages is surfaced and the configuration stays valid;
+* whether a nonexistent option is declined rather than invented;
+* whether every euro amount in a reply exists in the catalog, the returned data or the customer's own words.
+
+A run costs a few US cents and prints the score, token usage and an estimated cost. Cases are in `services/agent/evals/cases.json`. `LLM_MODEL=gpt-5.4 make eval` compares another model.
+
+Each run is saved to `services/agent/evals/results/`, which git ignores. `make eval-view` opens a small viewer at http://localhost:8090/viewer/. Its **Run evaluation** button starts a new run with the chosen model, after asking for confirmation. Progress appears live and the result opens when the run is done. The viewer only listens on your own machine and refuses run requests from other websites. It shows:
+
+* the score over all runs and the list of runs;
+* the checks per case, with the reason for each failure;
+* each conversation, with the cards the AI chose and the final configuration;
+* tokens, cost and duration per run and per case.
 
 To run the services without Docker:
 
@@ -240,7 +257,7 @@ The catalog service is internal. `GET /v1/catalog`, `POST /v1/recommendations`, 
 * **In-memory sessions.** A restart drops sessions; the client then starts a new one. Next step: a DynamoDB or Redis implementation of `SessionStore`.
 * **Guided-mode language understanding is regex-based.** It covers the demo phrasings and common variants, in English only. AI mode handles free language and replies in the customer's language.
 * **No streaming.** AI turns take a few seconds. Streaming the text, then appending components, would improve perceived latency.
-* **Evaluation.** Add an offline eval set of personas, then score requirement extraction, question count, and whether the final configuration is valid and within budget. Track the results per model and prompt version.
+* **Evaluation is tiny.** `make eval` covers four conversations with rule-based checks. Next steps: more personas and languages, an AI grader for tone and clarity, repeated runs to measure variance, and tracking scores per model and prompt version.
 * **Catalog depth.** No trims, engine variants, regional pricing, lead times or images yet; the schema extends naturally.
 * **The test suite doesn't call a live LLM**, by design: there are no keys in CI. Live use needs `OPENAI_API_KEY` or `ANTHROPIC_API_KEY`.
 

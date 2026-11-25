@@ -1,0 +1,315 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AI Eval Results</title>
+<style>
+  :root {
+    --bg: #f4f5f7; --panel: #fff; --text: #1a1a1a; --text-2: #5f6368; --text-3: #8a8f98; --line: #e3e5e8;
+    --blue: #1c69d4; --blue-soft: #e8f0fc; --ok: #1e8e3e; --ok-soft: #e6f4ea; --bad: #d93025; --bad-soft: #fce8e6;
+    --user: #eef1f5; --radius: 6px; --shadow: 0 1px 2px rgba(0,0,0,.05), 0 2px 8px rgba(0,0,0,.04);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #111317; --panel: #1b1e23; --text: #ececec; --text-2: #a7adb5; --text-3: #7d838c; --line: #2c3036;
+      --blue: #5b9bff; --blue-soft: #1d2a40; --ok: #5bc77a; --ok-soft: #17301f; --bad: #ff7b6e; --bad-soft: #3a1d1a;
+      --user: #262a31; --shadow: none; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.5 "Helvetica Neue", Arial, sans-serif; }
+  header { display: flex; align-items: center; gap: 12px; padding: 14px 24px; background: var(--panel); border-bottom: 1px solid var(--line); }
+  header h1 { margin: 0; font-size: 17px; font-weight: 500; }
+  header .sub { color: var(--text-2); font-size: 13px; }
+  header label { margin-left: auto; display: flex; gap: 8px; align-items: center; color: var(--text-2); font-size: 13px; cursor: pointer; }
+  .layout { display: grid; grid-template-columns: 290px 1fr; min-height: calc(100vh - 53px); }
+  aside { border-right: 1px solid var(--line); background: var(--panel); padding: 16px; overflow-y: auto; }
+  aside h2, main h2 { font-size: 12px; font-weight: 500; letter-spacing: .05em; text-transform: uppercase; color: var(--text-3); margin: 0 0 10px; }
+  .trend { display: flex; align-items: flex-end; gap: 3px; height: 56px; margin-bottom: 18px; padding: 6px 0; border-bottom: 1px solid var(--line); }
+  .trend i { flex: 1; max-width: 18px; min-height: 3px; border-radius: 2px 2px 0 0; background: var(--ok); opacity: .55; cursor: pointer; }
+  .trend i.part { background: var(--bad); }
+  .trend i.cur { opacity: 1; }
+  .run { display: block; width: 100%; text-align: left; border: 1px solid transparent; background: none; color: inherit; font: inherit;
+    padding: 10px; border-radius: var(--radius); cursor: pointer; margin-bottom: 4px; }
+  .run:hover { background: var(--bg); }
+  .run[aria-current=true] { background: var(--blue-soft); border-color: var(--blue); }
+  .run .top { display: flex; justify-content: space-between; gap: 8px; }
+  .run .when { font-weight: 500; }
+  .run .meta { color: var(--text-2); font-size: 12px; }
+  .bar { height: 4px; border-radius: 2px; background: var(--bad-soft); margin-top: 6px; overflow: hidden; }
+  .bar div { height: 100%; background: var(--ok); }
+  main { padding: 24px; overflow-x: hidden; }
+  .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; margin-bottom: 24px; }
+  .tile { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 14px 16px; box-shadow: var(--shadow); }
+  .tile span { display: block; color: var(--text-2); font-size: 12px; }
+  .tile strong { display: block; font-size: 22px; font-weight: 500; margin-top: 2px; font-variant-numeric: tabular-nums; }
+  .tile strong.ok { color: var(--ok); } .tile strong.bad { color: var(--bad); }
+  .cases { display: grid; gap: 16px; }
+  .case { background: var(--panel); border: 1px solid var(--line); border-left: 4px solid var(--ok); border-radius: var(--radius); box-shadow: var(--shadow); }
+  .case.failed { border-left-color: var(--bad); }
+  .case-head { display: flex; align-items: baseline; gap: 12px; padding: 14px 18px 6px; flex-wrap: wrap; }
+  .case-head h3 { margin: 0; font-size: 15px; font-weight: 500; font-family: ui-monospace, Menlo, monospace; }
+  .case-head p { margin: 0; color: var(--text-2); flex: 1; min-width: 200px; }
+  .pill { font-size: 12px; font-weight: 500; padding: 2px 9px; border-radius: 999px; background: var(--ok-soft); color: var(--ok); white-space: nowrap; }
+  .pill.bad { background: var(--bad-soft); color: var(--bad); }
+  .case-meta { padding: 0 18px; color: var(--text-3); font-size: 12px; }
+  .checks { list-style: none; margin: 10px 0 0; padding: 0 18px 12px; display: grid; gap: 4px; }
+  .checks li { display: grid; grid-template-columns: 18px 1fr; gap: 6px; }
+  .checks .icon { font-weight: 700; color: var(--ok); }
+  .checks li.fail .icon { color: var(--bad); }
+  .checks .detail { grid-column: 2; color: var(--bad); font-size: 12.5px; background: var(--bad-soft); padding: 4px 8px; border-radius: 4px; word-break: break-word; }
+  details { border-top: 1px solid var(--line); }
+  summary { padding: 10px 18px; cursor: pointer; color: var(--blue); font-size: 13px; user-select: none; }
+  .convo { padding: 4px 18px 18px; display: grid; gap: 12px; }
+  .msg { max-width: 760px; }
+  .msg.user { justify-self: end; background: var(--user); padding: 8px 14px; border-radius: var(--radius); }
+  .msg .who { font-size: 11px; color: var(--text-3); text-transform: uppercase; letter-spacing: .04em; margin-bottom: 2px; }
+  .msg .text { white-space: pre-wrap; }
+  .comps { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+  .comp { border: 1px solid var(--line); border-radius: var(--radius); padding: 6px 10px; font-size: 12.5px; background: var(--bg); max-width: 100%; }
+  .comp b { font-weight: 500; color: var(--blue); font-family: ui-monospace, Menlo, monospace; font-size: 11.5px; }
+  .comp ul { margin: 4px 0 0; padding-left: 16px; }
+  .comp.conflict b { color: var(--bad); }
+  .final { padding: 0 18px 16px; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; font-size: 13px; }
+  .final .label { color: var(--text-2); margin-right: 4px; }
+  .chip { background: var(--bg); border: 1px solid var(--line); border-radius: 999px; padding: 1px 9px; font-size: 12px; }
+  .empty { color: var(--text-2); max-width: 560px; }
+  .empty code { background: var(--panel); border: 1px solid var(--line); padding: 1px 6px; border-radius: 4px; }
+  .actions { margin-left: auto; display: flex; align-items: center; gap: 14px; }
+  header label { margin-left: 0; }
+  .btn { height: 34px; padding: 0 14px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--panel);
+    color: var(--text); font: inherit; font-size: 13px; cursor: pointer; white-space: nowrap; }
+  .btn.primary { background: var(--blue); border-color: var(--blue); color: #fff; font-weight: 500; }
+  .btn:disabled { opacity: .5; cursor: default; }
+  select.btn { padding: 0 8px; }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow);
+    padding: 16px 18px; margin-bottom: 20px; }
+  .panel h3 { margin: 0 0 6px; font-size: 15px; font-weight: 500; display: flex; align-items: center; gap: 10px; }
+  .panel p { margin: 0 0 12px; color: var(--text-2); }
+  .panel .row { display: flex; gap: 10px; flex-wrap: wrap; }
+  .panel.error { border-color: var(--bad); }
+  .log { margin: 10px 0 0; max-height: 260px; overflow: auto; background: var(--bg); border-radius: 4px; padding: 10px 12px;
+    font: 12px/1.55 ui-monospace, Menlo, monospace; white-space: pre-wrap; }
+  .log .ok { color: var(--ok); } .log .bad { color: var(--bad); } .log .head { font-weight: 600; margin-top: 6px; }
+  .spinner { width: 14px; height: 14px; border: 2px solid var(--blue-soft); border-top-color: var(--blue); border-radius: 50%;
+    animation: spin .8s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  @media (prefers-reduced-motion: reduce) { .spinner { animation: none; } }
+  @media (max-width: 800px) {
+    header { flex-wrap: wrap; }
+    .actions { margin-left: 0; width: 100%; flex-wrap: wrap; }
+    .layout { grid-template-columns: 1fr; }
+    aside { border-right: 0; border-bottom: 1px solid var(--line); max-height: 260px; }
+    main, header { padding-left: 16px; padding-right: 16px; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1>AI eval results</h1>
+  <span class="sub" id="sub"></span>
+  <div class="actions">
+    <label><input type="checkbox" id="only-failed"> Only failed checks</label>
+    <span id="run-controls" hidden>
+      <select class="btn" id="model" aria-label="Model"></select>
+      <button class="btn primary" id="run-btn" type="button">Run evaluation</button>
+    </span>
+  </div>
+</header>
+<div class="layout">
+  <aside>
+    <h2>Score over runs</h2>
+    <div class="trend" id="trend" aria-label="Pass rate per run, oldest to newest"></div>
+    <h2>Runs</h2>
+    <nav id="runs"></nav>
+  </aside>
+  <main><div id="runner"></div><div id="main"></div></main>
+</div>
+<script>
+const $ = (s) => document.querySelector(s);
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const eur = (v) => (v == null ? "–" : "€" + Number(v).toLocaleString("en-US"));
+const when = (iso) => new Date(iso).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
+const pct = (r) => (r.total ? Math.round((r.passed / r.total) * 100) : 0);
+
+let index = [], current = null, run = null;
+
+async function load(selectRun = true) {
+  try {
+    index = await fetch("../results/index.json", { cache: "no-store" }).then((r) => { if (!r.ok) throw 0; return r.json(); });
+  } catch { index = []; }
+  if (!selectRun) return;
+  if (!index.length) {
+    $("#main").innerHTML = `<div class="empty"><h2>No runs yet</h2><p>Click <b>Run evaluation</b> above, or run <code>make eval</code> in the repository and reload this page.
+      Each run is saved to <code>services/agent/evals/results/</code>.</p></div>`;
+    return;
+  }
+  const wanted = location.hash.slice(1);
+  select(index.find((r) => r.file === wanted) ? wanted : index[0].file);
+}
+
+async function select(file) {
+  current = file;
+  history.replaceState(null, "", "#" + file);
+  run = await fetch("../results/" + file, { cache: "no-store" }).then((r) => r.json());
+  renderSidebar();
+  renderRun();
+}
+
+function renderSidebar() {
+  $("#sub").textContent = `${index.length} run${index.length === 1 ? "" : "s"}`;
+  // oldest left, newest right
+  $("#trend").innerHTML = [...index].reverse().map((r) =>
+    `<i class="${r.passed < r.total ? "part" : ""} ${r.file === current ? "cur" : ""}" data-file="${esc(r.file)}"
+        title="${esc(when(r.started_at))}: ${r.passed}/${r.total}" style="height:${Math.max(6, pct(r))}%"></i>`).join("");
+  $("#runs").innerHTML = index.map((r) => `
+    <button class="run" data-file="${esc(r.file)}" aria-current="${r.file === current}">
+      <div class="top"><span class="when">${esc(when(r.started_at))}</span><span>${r.passed}/${r.total}</span></div>
+      <div class="meta">${esc(r.model)} · ${r.cases} cases · $${r.cost_usd.toFixed(2)} · ${Math.round(r.seconds)} s</div>
+      <div class="bar"><div style="width:${pct(r)}%"></div></div>
+    </button>`).join("");
+}
+
+function component(c) {
+  const items = (c.items || []).map((x) => typeof x === "string" ? esc(x)
+    : `${esc(x.name)} · ${eur(x.price)}${x.fits === false ? " · <em>doesn't fit all needs</em>" : ""}`);
+  return `<div class="comp ${esc(c.type)}"><b>${esc(c.type)}</b>${c.title ? ` ${esc(c.title)}` : ""}
+    ${c.text ? `<div>${esc(c.text)}</div>` : ""}${items.length ? `<ul>${items.map((i) => `<li>${i}</li>`).join("")}</ul>` : ""}</div>`;
+}
+
+function renderRun() {
+  const onlyFailed = $("#only-failed").checked;
+  const failedCases = run.cases.filter((c) => c.checks.some((k) => !k.ok)).length;
+  const u = run.usage;
+  const allOk = run.passed === run.total;
+  let html = `
+    <div class="tiles">
+      <div class="tile"><span>Checks passed</span><strong class="${allOk ? "ok" : "bad"}">${run.passed}/${run.total}</strong></div>
+      <div class="tile"><span>Cases passed</span><strong>${run.cases.length - failedCases}/${run.cases.length}</strong></div>
+      <div class="tile"><span>Model</span><strong>${esc(run.model)}</strong></div>
+      <div class="tile"><span>LLM calls</span><strong>${u.calls}</strong></div>
+      <div class="tile"><span>Tokens in / out</span><strong>${(u.input / 1000).toFixed(1)}k / ${(u.output / 1000).toFixed(1)}k</strong></div>
+      <div class="tile"><span>Cost (list price)</span><strong>$${u.cost_usd.toFixed(2)}</strong></div>
+      <div class="tile"><span>Duration</span><strong>${Math.round(run.seconds)} s</strong></div>
+    </div>
+    <h2>Cases · ${esc(when(run.started_at))}</h2><div class="cases">`;
+  for (const c of run.cases) {
+    const fails = c.checks.filter((k) => !k.ok);
+    if (onlyFailed && !fails.length) continue;
+    const shown = onlyFailed ? fails : c.checks;
+    const f = c.final;
+    html += `
+      <article class="case ${fails.length ? "failed" : ""}">
+        <div class="case-head"><h3>${esc(c.id)}</h3><p>${esc(c.about)}</p>
+          <span class="pill ${fails.length ? "bad" : ""}">${c.checks.length - fails.length}/${c.checks.length} checks</span></div>
+        <div class="case-meta">${c.usage.calls} LLM calls · $${c.usage.cost_usd.toFixed(3)} · ${c.seconds} s</div>
+        <ul class="checks">${shown.map((k) => `
+          <li class="${k.ok ? "" : "fail"}"><span class="icon">${k.ok ? "✓" : "✗"}</span><span>${esc(k.name)}</span>
+            ${k.ok ? "" : `<span class="detail">${esc(k.detail)}</span>`}</li>`).join("")}</ul>
+        ${f ? `<div class="final"><span class="label">End state:</span>
+          ${f.model ? `<span class="chip">${esc(f.model)} · ${eur(f.total_price)} · ${f.valid ? "valid" : "invalid"}</span>` : `<span class="chip">no car configured</span>`}
+          ${f.needs.map((n) => `<span class="chip">${esc(n)}</span>`).join("")}
+          ${(f.options || []).map((o) => `<span class="chip">+ ${esc(o)}</span>`).join("")}</div>` : ""}
+        <details ${fails.length && !onlyFailed ? "" : ""}><summary>Conversation (${c.transcript.filter((m) => m.role === "user").length} messages)</summary>
+          <div class="convo">${c.transcript.map((m) => `
+            <div class="msg ${m.role}"><div class="who">${m.role === "user" ? "Customer" : `Assistant${m.seconds ? ` · ${m.seconds} s` : ""}`}</div>
+              <div class="text">${esc(m.text)}</div>
+              ${m.components?.length ? `<div class="comps">${m.components.map(component).join("")}</div>` : ""}</div>`).join("")}</div>
+        </details>
+      </article>`;
+  }
+  html += `</div>`;
+  if (onlyFailed && !failedCases) html += `<p class="empty">Every check passed in this run.</p>`;
+  $("#main").innerHTML = html;
+}
+
+document.addEventListener("click", (e) => {
+  const t = e.target.closest("[data-file]");
+  if (t) select(t.dataset.file);
+});
+
+// ------------------------------------------------------------------ starting a run (needs serve.py)
+
+let polling = null;
+const runBtn = $("#run-btn");
+
+function logHtml(lines) {
+  return lines.map((l) => {
+    const cls = /^\s*✓/.test(l) ? "ok" : /^\s*✗/.test(l) ? "bad" : /^●/.test(l) ? "head" : "";
+    return `<div class="${cls}">${esc(l)}</div>`;
+  }).join("");
+}
+
+function askToRun() {
+  const model = $("#model").value;
+  $("#runner").innerHTML = `
+    <div class="panel"><h3>Run the evaluation?</h3>
+      <p>Plays the test conversations against the real model (${esc(model)}) using the OpenAI key from your .env.
+        This costs roughly $0.25 and takes about half a minute.</p>
+      <div class="row"><button class="btn primary" id="confirm-run" type="button">Start run</button>
+        <button class="btn" id="cancel-run" type="button">Cancel</button></div></div>`;
+  $("#confirm-run").focus();
+  $("#cancel-run").onclick = () => { $("#runner").innerHTML = ""; };
+  $("#confirm-run").onclick = async () => {
+    $("#runner").innerHTML = "";
+    const res = await fetch("/api/run", { method: "POST", headers: { "content-type": "application/json", "x-eval-viewer": "1" },
+      body: JSON.stringify({ model }) });
+    if (!res.ok && res.status !== 409) {
+      const err = await res.json().catch(() => ({}));
+      showRunError(err.error || `Couldn't start the run (HTTP ${res.status}).`, []);
+      return;
+    }
+    watch();
+  };
+}
+
+function showRunError(text, lines) {
+  $("#runner").innerHTML = `<div class="panel error"><h3>Run failed</h3><p>${esc(text)}</p>
+    ${lines.length ? `<div class="log">${logHtml(lines)}</div>` : ""}
+    <div class="row"><button class="btn" id="dismiss" type="button">Dismiss</button></div></div>`;
+  $("#dismiss").onclick = () => { $("#runner").innerHTML = ""; };
+}
+
+function watch() {
+  const before = index[0]?.file;
+  runBtn.disabled = true;
+  clearInterval(polling);
+  const tick = async () => {
+    let st;
+    try { st = await fetch("/api/status", { cache: "no-store" }).then((r) => r.json()); } catch { return; }
+    if (st.running) {
+      $("#runner").innerHTML = `<div class="panel"><h3><span class="spinner"></span>Running evaluation · ${esc(st.model)} · ${st.seconds} s</h3>
+        <div class="log" id="log">${logHtml(st.lines) || "Starting…"}</div></div>`;
+      const log = $("#log"); log.scrollTop = log.scrollHeight;
+      return;
+    }
+    clearInterval(polling);
+    runBtn.disabled = false;
+    await load(false);
+    if (index[0] && index[0].file !== before) {
+      $("#runner").innerHTML = "";
+      select(index[0].file);
+    } else {
+      const hint = st.exit_code === 2 ? "No OpenAI API key found. Set OPENAI_API_KEY in the repository's .env." : "No result was saved.";
+      showRunError(hint, st.lines);
+    }
+  };
+  tick();
+  polling = setInterval(tick, 1000);
+}
+
+async function initRunner() {
+  // The button only exists when the viewer is served by serve.py (make eval-view).
+  let st;
+  try { st = await fetch("/api/status", { cache: "no-store" }).then((r) => { if (!r.ok) throw 0; return r.json(); }); }
+  catch { return; }
+  $("#model").innerHTML = st.models.map((m) => `<option>${esc(m)}</option>`).join("");
+  $("#run-controls").hidden = false;
+  runBtn.onclick = askToRun;
+  if (st.running) watch();  // a run started earlier (or in another tab) is still going
+}
+initRunner();
+$("#only-failed").addEventListener("change", () => run && renderRun());
+load();
+</script>
+</body>
+</html>

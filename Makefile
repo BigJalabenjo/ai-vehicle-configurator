@@ -1,4 +1,4 @@
-.PHONY: up down test dev-install diagram
+.PHONY: up down test eval eval-view dev-install diagram
 
 up:            ## build and run the full stack on http://localhost:8080
 	docker compose up --build
@@ -12,6 +12,12 @@ dev-install:   ## local virtualenv for running tests without Docker
 test:
 	cd services/catalog && ../../.venv/bin/python -m pytest -q
 	cd services/agent && ../../.venv/bin/python -m pytest -q
+
+eval:          ## tiny quality check against the real model (a few cents; reads OPENAI_API_KEY from .env)
+	cd services/agent && ../../.venv/bin/python -m evals.run
+
+eval-view:     ## browse eval runs and start new ones on http://localhost:8090/viewer/
+	.venv/bin/python services/agent/evals/serve.py
 
 diagram:       ## regenerate docs/architecture/architecture.{drawio,svg}
 	python3 docs/architecture/generate.py
