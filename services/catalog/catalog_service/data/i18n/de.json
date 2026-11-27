@@ -1,0 +1,46 @@
+{
+  "disclaimer": "Fiktiver Demo-Katalog. Modellnamen dienen nur der Veranschaulichung; Preise, technische Daten und Ausstattungsregeln sind erfunden und entsprechen keinen echten BMW Angeboten.",
+  "groups": {
+    "wheels": {"name": "Räder"},
+    "seats": {"name": "Sitze"},
+    "paint": {"name": "Lackierung"},
+    "audio": {"name": "Soundsystem"}
+  },
+  "models": {
+    "i4_edrive40": {"summary": "Sportliches elektrisches viertüriges Coupé mit großer Reichweite; kompakte Rückbank."},
+    "i5_touring_edrive40": {"summary": "Elektrischer Kombi: breite Rückbank, großer Kofferraum und schnelles Laden für lange Strecken."},
+    "ix1_xdrive30": {"summary": "Kompakter elektrischer SAV, preiswert für Stadt und Umland."},
+    "ix_xdrive45": {"summary": "Elektrisches Flaggschiff-SAV: sehr leise, geräumig, mit der größten Reichweite im Angebot."},
+    "x5_xdrive50e": {"summary": "Plug-in-Hybrid-SAV: elektrisch zur Arbeit, keine Ladestopps auf langen Strecken, optional dritte Sitzreihe."},
+    "x7_xdrive40d": {"summary": "Großer Siebensitzer mit dem größten Kofferraum und der höchsten Anhängelast."},
+    "active_tourer_225e": {"summary": "Praktischer kompakter Plug-in-Hybrid mit verschiebbarer Rückbank."},
+    "touring_520d": {"summary": "Effizienter Diesel-Kombi mit über 1.100 km Reichweite pro Tankfüllung."}
+  },
+  "options": {
+    "wheels_19_aero": {"name": "19\" Aerodynamikräder", "category": "Räder", "description": "Reichweitenoptimierte Serienräder."},
+    "wheels_20_sport": {"name": "20\" Sporträder", "category": "Räder", "description": "Größere Räder mit präziserem Handling."},
+    "wheels_21_m": {"name": "21\" M Leichtmetallräder", "category": "Räder", "description": "Räder im M Design, nur zusammen mit dem M Sportpaket."},
+    "seats_standard": {"name": "Standardsitze", "category": "Sitze", "description": "Stoff/Sensatec, vorne beheizt."},
+    "seats_comfort": {"name": "Komfortsitze (belüftet, Massage)", "category": "Sitze", "description": "Elektrisch verstellbar, belüftet, mit Massage – entspannt auf langen Strecken."},
+    "seats_sport": {"name": "Sportsitze", "category": "Sitze", "description": "Ausgeprägte Seitenwangen für dynamisches Fahren."},
+    "paint_alpine_white": {"name": "Alpinweiß (uni)", "category": "Lackierung", "description": "Serienlackierung."},
+    "paint_black_sapphire": {"name": "Saphirschwarz (metallic)", "category": "Lackierung", "description": "Metalliclackierung."},
+    "paint_portimao_blue": {"name": "Portimao Blau (M metallic)", "category": "Lackierung", "description": "M Farbe, nur mit dem M Sportpaket."},
+    "pkg_m_sport": {"name": "M Sportpaket", "category": "Pakete", "description": "M Aerodynamik, M Sportlenkrad und Sportsitze."},
+    "pkg_travel_comfort": {"name": "Reise- & Komfortpaket", "category": "Pakete", "description": "Komfortsitze, Lenkradheizung und Sonnenschutzrollos hinten."},
+    "pkg_parking_assistant": {"name": "Parking Assistant Plus", "category": "Assistenz", "description": "360°-Kamera, Rückfahrassistent, Remote 3D View."},
+    "pkg_driving_assistant_pro": {"name": "Driving Assistant Professional", "category": "Assistenz", "description": "Abstandstempomat mit Stop&Go, Spurhalteassistent und Autobahnassistent. Erfordert Parking Assistant Plus (gemeinsame Sensorik)."},
+    "hud": {"name": "Head-Up Display", "category": "Assistenz", "description": "Navigation und Geschwindigkeit werden in die Windschutzscheibe projiziert."},
+    "heated_steering": {"name": "Lenkradheizung", "category": "Komfort", "description": ""},
+    "rear_sunblinds": {"name": "Sonnenschutzrollos hinten", "category": "Komfort", "description": "Manuelle Rollos für die hinteren Seitenfenster."},
+    "rear_climate": {"name": "4-Zonen-Klimaautomatik", "category": "Komfort", "description": "Eigene Klimazonen für den Fond."},
+    "panorama_roof": {"name": "Panorama-Glasdach", "category": "Komfort", "description": "Großes Glasdach mit elektrischem Sonnenschutz."},
+    "rear_entertainment": {"name": "Fond-Entertainment", "category": "Komfort", "description": "Zwei Touch-Displays hinten mit Streaming."},
+    "third_row": {"name": "Dritte Sitzreihe (7 Sitze)", "category": "Praktisches", "description": "Zwei zusätzliche versenkbare Sitze. Erfordert die 4-Zonen-Klimaautomatik für die Belüftung der dritten Reihe."},
+    "tow_hitch": {"name": "Elektrisch schwenkbare Anhängerkupplung", "category": "Praktisches", "description": "Für Anhänger und Fahrradträger bis zur Anhängelast des Modells."},
+    "roof_rails": {"name": "Dachreling", "category": "Praktisches", "description": "Für Dachboxen und Fahrradträger. Nicht zusammen mit dem Panorama-Glasdach zugelassen."},
+    "charging_22kw": {"name": "22-kW-AC-Laden", "category": "Laden", "description": "Schnelleres Laden an öffentlichen AC-Ladesäulen."},
+    "audio_harman": {"name": "Harman Kardon Surround Sound", "category": "Audio", "description": "16 Lautsprecher."},
+    "audio_bw": {"name": "Bowers & Wilkins Diamond Surround Sound", "category": "Audio", "description": "Premium-Sound mit Diamant-Hochtönern."}
+  }
+}

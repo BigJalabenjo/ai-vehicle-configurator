@@ -9,9 +9,8 @@ from __future__ import annotations
 
 import uuid
 
-from .domain import POWERTRAIN_LABEL, Requirements
-
-POWERTRAIN_SHORT = {"bev": "Electric", "phev": "Plug-in hybrid", "petrol": "Petrol", "diesel": "Diesel"}
+from .domain import Requirements
+from .i18n import eur, lang, num, t, words
 
 
 def _id() -> str:
@@ -23,9 +22,9 @@ def question(prompt: str, choices: list[str], topic: str = "", allow_free_text: 
             "choices": [{"label": c} for c in choices][:6], "allow_free_text": allow_free_text}
 
 
-def slider(req: Requirements, prompt: str = "What matters more to you on the road?") -> dict:
-    return {"type": "slider", "id": _id(), "preference": "sportiness", "prompt": prompt,
-            "left_label": "Comfort", "right_label": "Sporty",
+def slider(req: Requirements, prompt: str | None = None) -> dict:
+    return {"type": "slider", "id": _id(), "preference": "sportiness", "prompt": prompt or t("slider_prompt"),
+            "left_label": t("slider_left"), "right_label": t("slider_right"),
             "value": req.sportiness if req.sportiness is not None else 0.5}
 
 
@@ -34,7 +33,7 @@ def model_card(ev: dict) -> dict:
     return {
         "model_id": ev["model_id"],
         "name": ev["name"],
-        "powertrain": POWERTRAIN_SHORT[ev["powertrain"]],
+        "powertrain": words("powertrain_short")[ev["powertrain"]],
         "body": ev["body"],
         "base_price": ev["base_price"],
         "entry_price": ev["entry_price"],
@@ -50,35 +49,37 @@ def model_card(ev: dict) -> dict:
 def _highlights(s: dict) -> list[str]:
     out = []
     if s.get("electric_range_km") and s["powertrain"] == "bev":
-        out.append(f"{s['electric_range_km']} km range")
+        out.append(t("hl_range", km=s["electric_range_km"]))
     elif s.get("electric_range_km"):
-        out.append(f"{s['electric_range_km']} km electric · {s['total_range_km']:,} km total")
+        out.append(t("hl_phev_range", km=s["electric_range_km"], total=num(s["total_range_km"])))
     else:
-        out.append(f"{s['total_range_km']:,} km range")
-    out.append(f"{s['seats']} seats")
-    out.append(f"{s['trunk_l']} l boot")
+        out.append(t("hl_range", km=num(s["total_range_km"])))
+    out.append(t("hl_seats", n=s["seats"]))
+    out.append(t("hl_boot", l=s["trunk_l"]))
     if s.get("max_tow_kg"):
-        out.append(f"tows {s['max_tow_kg']:,} kg")
+        out.append(t("hl_tows", kg=num(s["max_tow_kg"])))
     return out
 
 
-def model_cards(evaluations: list[dict], title: str = "Recommended for you") -> dict:
-    return {"type": "model_cards", "id": _id(), "title": title, "cards": [model_card(e) for e in evaluations]}
+def model_cards(evaluations: list[dict], title: str | None = None) -> dict:
+    return {"type": "model_cards", "id": _id(), "title": title or t("title_recommended"), "cards": [model_card(e) for e in evaluations]}
 
 
 def comparison(evaluations: list[dict]) -> dict:
+    yes_no = lambda v: t("yes") if v else t("no")  # noqa: E731
+    seconds = lambda v: f"{v} s".replace(".", ",") if lang() == "de" else f"{v} s"  # noqa: E731
     rows_spec = [
-        ("Price as needed", lambda e: e["entry_price"], "min", lambda v: f"€{v:,}"),
-        ("Powertrain", lambda e: POWERTRAIN_SHORT[e["powertrain"]], None, str),
-        ("Electric range", lambda e: e["specs"]["electric_range_km"] or 0, "max", lambda v: f"{v} km" if v else "—"),
-        ("Total range", lambda e: e["specs"]["total_range_km"], "max", lambda v: f"{v:,} km"),
-        ("DC charging", lambda e: e["specs"]["dc_charge_kw"] or 0, "max", lambda v: f"{v} kW" if v else "—"),
-        ("Seats", lambda e: e["specs"]["seats"], "max", str),
-        ("3 child seats in rear", lambda e: e["specs"]["rear_three_child_seats"], None, lambda v: "Yes" if v else "No"),
-        ("Boot", lambda e: e["specs"]["trunk_l"], "max", lambda v: f"{v} l"),
-        ("Towing", lambda e: e["specs"]["max_tow_kg"], "max", lambda v: f"{v:,} kg" if v else "—"),
-        ("0–100 km/h", lambda e: e["specs"]["acceleration_s"], "min", lambda v: f"{v} s"),
-        ("Meets your needs", lambda e: e["fits"], None, lambda v: "Yes" if v else "Not fully"),
+        (t("cmp_price"), lambda e: e["entry_price"], "min", eur),
+        (t("cmp_powertrain"), lambda e: words("powertrain_short")[e["powertrain"]], None, str),
+        (t("cmp_electric_range"), lambda e: e["specs"]["electric_range_km"] or 0, "max", lambda v: f"{v} km" if v else "—"),
+        (t("cmp_total_range"), lambda e: e["specs"]["total_range_km"], "max", lambda v: f"{num(v)} km"),
+        (t("cmp_dc"), lambda e: e["specs"]["dc_charge_kw"] or 0, "max", lambda v: f"{v} kW" if v else "—"),
+        (t("cmp_seats"), lambda e: e["specs"]["seats"], "max", str),
+        (t("cmp_child_seats"), lambda e: e["specs"]["rear_three_child_seats"], None, yes_no),
+        (t("cmp_boot"), lambda e: e["specs"]["trunk_l"], "max", lambda v: f"{v} l"),
+        (t("cmp_towing"), lambda e: e["specs"]["max_tow_kg"], "max", lambda v: f"{num(v)} kg" if v else "—"),
+        ("0–100 km/h", lambda e: e["specs"]["acceleration_s"], "min", seconds),
+        (t("cmp_fits"), lambda e: e["fits"], None, lambda v: t("yes") if v else t("not_fully")),
     ]
     rows = []
     for label, getter, best, fmt in rows_spec:
@@ -92,18 +93,19 @@ def comparison(evaluations: list[dict]) -> dict:
             "models": [{"model_id": e["model_id"], "name": e["name"]} for e in evaluations], "rows": rows}
 
 
-def tradeoffs(items: list[dict], title: str = "Possible trade-offs") -> dict:
-    return {"type": "tradeoffs", "id": _id(), "title": title,
+def tradeoffs(items: list[dict], title: str | None = None) -> dict:
+    return {"type": "tradeoffs", "id": _id(), "title": title or t("title_tradeoffs"),
             "items": [{"label": t["label"], "description": t["description"], "model_id": t["model_id"],
                        "patch": t["relax_patch"]} for t in items]}
 
 
-def option_toggles(view: dict, option_ids: list[str] | None = None, title: str = "Suggested options") -> dict:
+def option_toggles(view: dict, option_ids: list[str] | None = None, title: str | None = None) -> dict:
     by_id = {o["id"]: o for o in view["catalog_options"]}
     if option_ids is None:
         option_ids = [o["id"] for o in view["catalog_options"] if o["recommended"]]
     options = [by_id[i] for i in option_ids if i in by_id]
-    return {"type": "option_toggles", "id": _id(), "title": title, "model_id": view["model_id"], "options": options}
+    return {"type": "option_toggles", "id": _id(), "title": title or t("title_options"), "model_id": view["model_id"],
+            "options": options}
 
 
 def conflict(conflict_data: dict) -> dict:
@@ -132,5 +134,5 @@ def summary(view: dict, req: Requirements, assumptions: list[str]) -> dict:
         "specs": view["specs"],
         "requirements": [label for _, label in req.describe()],
         "assumptions": assumptions,
-        "powertrain_label": POWERTRAIN_LABEL[view["specs"]["powertrain"]],
+        "powertrain_label": words("powertrain")[view["specs"]["powertrain"]],
     }

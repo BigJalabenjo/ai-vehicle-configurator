@@ -16,8 +16,9 @@ from typing import Annotated, Literal, Union
 
 from pydantic import BaseModel, Field
 
-from . import ui
+from . import i18n, ui
 from .catalog_client import CatalogClient
+from .i18n import t
 from .llm_agent import LLMAgent, LLMUnavailable
 from .offline_agent import OfflineAgent
 from .state import SessionState
@@ -73,9 +74,15 @@ class SummaryAction(BaseModel):
     type: Literal["request_summary"]
 
 
+class SetLanguageAction(BaseModel):
+    """The customer switched the interface language; replies, rules and voice follow it."""
+    type: Literal["set_language"]
+    language: i18n.Language
+
+
 Action = Annotated[
     Union[AnswerAction, SelectModelAction, SetPreferenceAction, ApplyTradeoffAction, ChangeOptionAction,
-          RemoveRequirementAction, UpdateRequirementsAction, SummaryAction],
+          RemoveRequirementAction, UpdateRequirementsAction, SummaryAction, SetLanguageAction],
     Field(discriminator="type"),
 ]
 
@@ -86,17 +93,6 @@ class TurnRequest(BaseModel):
 
 
 # --------------------------------------------------------------------------- orchestrator
-
-
-GREETING = ("Hi! I'll help you find and configure the right car. Tell me how you'll use it - who travels with you, "
-            "typical trips, powertrain preferences and budget. I'll only ask what I need.")
-
-EXAMPLE_PROMPTS = [
-    "I need a family car for regular long-distance travel. I prefer electric, need room for three children, "
-    "and do not want to spend more than EUR 85,000.",
-    "A sporty electric car for commuting, around €60k",
-    "We need 7 seats and tow a caravan",
-]
 
 
 class Orchestrator:
@@ -110,8 +106,9 @@ class Orchestrator:
         return self.agent.name if self.agent else "guided"
 
     def greeting(self, state: SessionState) -> dict:
-        message = {"role": "assistant", "text": GREETING,
-                   "components": [ui.question("Or start from an example:", EXAMPLE_PROMPTS, "example")]}
+        examples = [t("example_1"), t("example_2"), t("example_3")]
+        message = {"role": "assistant", "text": t("greeting"),
+                   "components": [ui.question(t("examples_prompt"), examples, "example")]}
         state.transcript.append(message)
         return message
 
@@ -123,6 +120,9 @@ class Orchestrator:
             # not as chat messages: no echo, no reply, no transcript entry, no LLM call.
             feedback = await self._option_change(tb, req.action)
             return {"message": None, "feedback": feedback, "mode": mode, "state": await self.snapshot(state, tb)}
+        if isinstance(req.action, SetLanguageAction):
+            feedback = self._language_change(state, req.action.language)
+            return {"message": None, "feedback": feedback, "mode": mode, "state": await self.snapshot(state)}
         if isinstance(req.action, UpdateRequirementsAction):
             # Same for needs edited on the stage: the stage shows the result (status line, budget bar).
             feedback = await self._requirements_change(tb, req.action)
@@ -144,6 +144,7 @@ class Orchestrator:
         tb = tb or Toolbox(self.catalog, state)
         view = tb.view if (tb.view and tb.view["model_id"] == state.model_id) else await tb.current_view()
         return {
+            "language": state.language,
             "requirements": [{"field": f, "label": label} for f, label in state.requirements.describe()],
             "requirement_values": state.requirements.model_dump(),
             "assumptions": state.assumptions,
@@ -158,7 +159,7 @@ class Orchestrator:
                 return await self.agent.run(tb, text), self.agent.name
             except LLMUnavailable as exc:
                 log.warning("LLM unavailable (%s); answering in guided mode", exc)
-                tb.components = [ui.notice("The AI assistant is temporarily unavailable - continuing in guided mode.", "warning")]
+                tb.components = [ui.notice(t("llm_unavailable"), "warning")]
         return await self.offline.run(tb, text), "guided"
 
     # ------------------------------------------------------------------ actions
@@ -170,15 +171,15 @@ class Orchestrator:
             case AnswerAction(value=v):
                 return v
             case SelectModelAction(model_id=m):
-                return f"Configure the {view['model_name']}" if view and view["model_id"] == m else f"Configure {m}"
+                return t("echo_configure", model=view["model_name"] if view and view["model_id"] == m else m)
             case SetPreferenceAction(value=v):
-                return f"Preference: {round(v * 100)}% sporty"
+                return t("echo_preference", pct=round(v * 100))
             case ApplyTradeoffAction(label=label):
-                return f"Accept: {label}" if label else "Accept trade-off"
+                return t("echo_tradeoff", label=label) if label else t("echo_tradeoff_plain")
             case RemoveRequirementAction(field=f):
-                return f"Remove requirement: {f.replace('_', ' ')}"
+                return t("echo_remove_need", field=i18n.words("field").get(f, f.replace("_", " ")))
             case SummaryAction():
-                return "Show summary"
+                return t("echo_summary")
         return ""
 
     async def _handle_action(self, tb: Toolbox, action: BaseModel) -> tuple[str, str]:
@@ -196,7 +197,7 @@ class Orchestrator:
                 return await self.agent.run(tb, prompt), self.agent.name
             except LLMUnavailable as exc:
                 log.warning("LLM unavailable (%s); narrating action in guided mode", exc)
-                tb.components = [ui.notice("The AI assistant is temporarily unavailable - continuing in guided mode.", "warning")]
+                tb.components = [ui.notice(t("llm_unavailable"), "warning")]
         return await self._narrate_offline(tb, action, result), "guided"
 
     async def _option_change(self, tb: Toolbox, action: ChangeOptionAction) -> dict:
@@ -216,6 +217,18 @@ class Orchestrator:
         tb.state.ui_events.append(f"Customer {verb} option {action.option_id} in the UI ({res['status']}): {outcome}")
         return {"status": res["status"], "option_id": action.option_id, "notes": notes,
                 "changed": [n["option_id"] for n in res["notes"]], "conflict": conflict, "error": error}
+
+    def _language_change(self, state: SessionState, language: str) -> dict:
+        """Switch the session language. Earlier messages stay as they were; an untouched greeting is redone."""
+        changed = language != state.language
+        state.language = language  # type: ignore[assignment]
+        i18n.use(language)
+        if changed:
+            if state.turns == 0:
+                state.transcript = []
+                self.greeting(state)
+            state.ui_events.append(f"Customer switched the interface language to {i18n.NAMES[language]}.")
+        return {"kind": "language", "status": "ok" if changed else "noop", "language": language}
 
     async def _requirements_change(self, tb: Toolbox, action: UpdateRequirementsAction) -> dict:
         """Apply needs edited on the stage and return structured feedback for the configurator."""
@@ -239,7 +252,7 @@ class Orchestrator:
             result = await tb.update_requirements({"sportiness": action.value})
             return f"The customer set the comfort/sport slider to {round(action.value * 100)}% sporty", result
         if isinstance(action, ApplyTradeoffAction):
-            result = await tb.update_requirements(action.patch, [f"Accepted trade-off: {action.label}"] if action.label else [])
+            result = await tb.update_requirements(action.patch, [t("tradeoff_assumption", label=action.label)] if action.label else [])
             return f"The customer accepted the trade-off '{action.label}'", result
         if isinstance(action, RemoveRequirementAction):
             result = await tb.update_requirements({action.field: None})
@@ -247,7 +260,7 @@ class Orchestrator:
         if isinstance(action, SummaryAction):
             view = await tb.current_view()
             if not view:
-                raise ToolError("Pick a model first - then I can summarise your configuration.")
+                raise ToolError(t("pick_model_first"))
             if self.agent:
                 tb.components.append(ui.summary(view, tb.state.requirements, tb.state.assumptions))
             return "The customer asked for the summary; it is already displayed - add a short closing note", tb.summarize_view(view)

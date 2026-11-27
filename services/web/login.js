@@ -1,9 +1,14 @@
 // Sign-in page. The password is checked by the agent service, which sets an HTTP-only cookie.
 
+import { applyStatic, mountSwitch, t } from "./i18n.js";
+
 const form = document.getElementById("login-form");
 const input = document.getElementById("password");
 const error = document.getElementById("login-error");
 const submit = document.getElementById("login-submit");
+
+applyStatic();
+mountSwitch(document.querySelector(".topbar-actions"));
 
 // Already signed in (or protection disabled)? Go straight to the app.
 fetch("/api/auth/status")
@@ -46,9 +51,9 @@ function showError(text) {
 
 form.addEventListener("submit", async (e) => {
   e.preventDefault();
-  if (!input.value) { showError("Please enter the password."); return; }
+  if (!input.value) { showError(t("enter_password")); return; }
   submit.disabled = true;
-  submit.textContent = "Signing in…";
+  submit.textContent = t("signing_in");
   error.hidden = true;
   try {
     const res = await fetch("/api/auth/login", {
@@ -57,12 +62,12 @@ form.addEventListener("submit", async (e) => {
       body: JSON.stringify({ password: input.value }),
     });
     if (res.ok) { location.replace("/"); return; }
-    if (res.status === 429 || res.status === 503) showError("Too many attempts. Please wait a minute and try again.");
-    else showError("Incorrect password. Please try again.");
+    if (res.status === 429 || res.status === 503) showError(t("too_many"));
+    else showError(t("wrong_password"));
   } catch {
-    showError("Could not reach the server. Please try again.");
+    showError(t("server_unreachable"));
   } finally {
     submit.disabled = false;
-    submit.textContent = "Sign in";
+    submit.textContent = t("sign_in");
   }
 });

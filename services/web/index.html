@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>BMW Configurator Assistant</title>
+  <title data-i18n-title="page_title">BMW Configurator Assistant</title>
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
@@ -13,12 +13,12 @@
         <img id="logo" class="logo" alt="BMW" hidden>
         <span class="wordmark">BMW</span>
         <span class="brand-divider" aria-hidden="true"></span>
-        <span class="product">Configurator Assistant</span>
+        <span class="product" data-i18n="product">Configurator Assistant</span>
       </div>
       <div class="topbar-actions">
         <button id="new-session" class="text-btn" type="button">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
-          New conversation
+          <span data-i18n="new_conversation">New conversation</span>
         </button>
       </div>
     </div>
@@ -30,32 +30,41 @@
 
     <section class="chat" aria-label="Conversation">
       <div class="chat-head">
-        <span>Assistant</span>
-        <button id="chat-min" class="icon-btn" type="button" title="Minimize the assistant" aria-label="Minimize the assistant">
+        <span data-i18n="assistant">Assistant</span>
+        <button id="chat-min" class="icon-btn" type="button" title="Minimize the assistant" aria-label="Minimize the assistant" data-i18n-attr="title:minimize,aria-label:minimize">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14"/></svg>
         </button>
       </div>
       <div id="scroll" class="scroll">
         <div class="hero">
-          <p class="eyebrow">AI Assistant · Prototype with a fictional catalog</p>
-          <h1>Find and configure your BMW.</h1>
+          <p class="eyebrow" data-i18n="eyebrow">AI Assistant · Prototype with a fictional catalog</p>
+          <h1 data-i18n="hero">Find and configure your BMW.</h1>
         </div>
         <div id="messages" class="messages" aria-live="polite"></div>
       </div>
       <!-- What the assistant understood (discover mode; the configurator shows it on the stage) -->
       <div id="needs-bar" class="needs-bar" hidden>
-        <span class="label">Your needs</span>
+        <span class="label" data-i18n="your_needs">Your needs</span>
         <div id="needs" class="chips"></div>
         <details id="assumptions-box" class="assumptions" hidden>
-          <summary>How I interpreted this</summary>
+          <summary data-i18n="how_interpreted">How I interpreted this</summary>
           <ul id="assumptions"></ul>
         </details>
       </div>
       <form id="composer" class="composer" autocomplete="off">
+        <div id="voice-status" class="voice-status" hidden>
+          <span class="voice-dot" aria-hidden="true"></span>
+          <span id="voice-label" role="status">Listening…</span>
+          <button id="voice-stop" type="button" class="link" data-i18n="end_voice">End voice</button>
+        </div>
         <div class="composer-inner">
           <textarea id="input" rows="1" maxlength="2000"
-            placeholder="Ask anything…" aria-label="Message"></textarea>
-          <button id="send" type="submit" class="btn primary">Send</button>
+            placeholder="Ask anything…" aria-label="Message" data-i18n-attr="placeholder:placeholder,aria-label:message"></textarea>
+          <button id="voice" type="button" class="btn secondary voice-btn" aria-pressed="false"
+            aria-label="Talk hands-free" title="Talk hands-free" hidden>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21"/></svg>
+          </button>
+          <button id="send" type="submit" class="btn primary" data-i18n="send">Send</button>
         </div>
       </form>
     </section>
@@ -64,7 +73,7 @@
 
   <button id="chat-fab" class="fab" type="button" hidden>
     <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v11H9l-5 4z"/></svg>
-    Assistant
+    <span data-i18n="assistant">Assistant</span>
   </button>
 
   <script src="app.js" type="module"></script>

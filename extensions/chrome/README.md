@@ -36,3 +36,4 @@ What this changes:
 * The switch is an accessible `role="switch"`. Animations are reduced when the system asks for reduced motion.
 * The app runs in an iframe with its own origin, loaded from its own server. The configurator page can't read the conversation, and the app can't read the configurator page.
 * Permissions: only `storage`, for the app address. No access to other sites or tabs.
+* Microphone: the frame is allowed to ask for it, for the app's hands-free voice mode. Chrome asks once whether the configurator site may use your microphone; nothing is recorded until you click the app's mic button.

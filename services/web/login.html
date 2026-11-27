@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Sign in · BMW Configurator Assistant</title>
+  <title data-i18n-title="login_title">Sign in · BMW Configurator Assistant</title>
   <link rel="stylesheet" href="styles.css">
 </head>
 <body class="login-page">
@@ -13,22 +13,23 @@
         <img id="logo" class="logo" alt="BMW" hidden>
         <span class="wordmark">BMW</span>
         <span class="brand-divider" aria-hidden="true"></span>
-        <span class="product">Configurator Assistant</span>
+        <span class="product" data-i18n="product">Configurator Assistant</span>
       </div>
+      <div class="topbar-actions"></div>
     </div>
   </header>
 
   <main class="login">
     <form id="login-form" class="login-card" autocomplete="on" novalidate>
-      <p class="eyebrow">Prototype · access restricted</p>
-      <h1>Sign in</h1>
-      <p class="muted">Enter the access password to continue.</p>
+      <p class="eyebrow" data-i18n="login_eyebrow">Prototype · access restricted</p>
+      <h1 data-i18n="sign_in">Sign in</h1>
+      <p class="muted" data-i18n="login_hint">Enter the access password to continue.</p>
       <label class="field">
-        <span>Password</span>
+        <span data-i18n="password">Password</span>
         <input id="password" name="password" type="password" autocomplete="current-password" required autofocus>
       </label>
       <p id="login-error" class="login-error" role="alert" hidden></p>
-      <button id="login-submit" class="btn primary full" type="submit">Sign in</button>
+      <button id="login-submit" class="btn primary full" type="submit" data-i18n="sign_in">Sign in</button>
     </form>
   </main>
 

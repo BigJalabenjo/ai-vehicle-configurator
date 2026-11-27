@@ -40,6 +40,18 @@ class Settings:
     auth_ttl_h: float = field(default_factory=lambda: float(os.getenv("AUTH_TTL_HOURS", "12")))
     # Sites allowed to embed the app (Chrome extension overlay), space-separated, e.g. "https://configure.bmw.de".
     embed_origins: list[str] = field(default_factory=lambda: os.getenv("EMBED_ORIGINS", "").split())
+    # Voice mode (speech-to-text and text-to-speech through OpenAI). On when OPENAI_API_KEY is set,
+    # unless VOICE_ENABLED=false.
+    voice_setting: bool = field(default_factory=lambda: os.getenv("VOICE_ENABLED", "true").lower() == "true")
+    voice_stt_model: str = field(default_factory=lambda: os.getenv("VOICE_STT_MODEL", "gpt-4o-mini-transcribe"))
+    voice_tts_model: str = field(default_factory=lambda: os.getenv("VOICE_TTS_MODEL", "gpt-4o-mini-tts"))
+    voice_tts_voice: str = field(default_factory=lambda: os.getenv("VOICE_TTS_VOICE", "marin"))
+    voice_max_audio_bytes: int = field(default_factory=lambda: int(os.getenv("VOICE_MAX_AUDIO_BYTES", str(2 * 1024 * 1024))))
+    voice_max_speech_chars: int = field(default_factory=lambda: int(os.getenv("VOICE_MAX_SPEECH_CHARS", "1500")))
+
+    @property
+    def voice_enabled(self) -> bool:
+        return self.voice_setting and bool(os.getenv("OPENAI_API_KEY"))
 
     @property
     def provider(self) -> str | None:

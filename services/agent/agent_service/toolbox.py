@@ -14,6 +14,7 @@ from pydantic import BaseModel, Field, ValidationError
 from . import ui
 from .catalog_client import CatalogClient, CatalogError
 from .domain import Requirements
+from .i18n import t
 from .state import SessionState
 
 
@@ -288,7 +289,7 @@ class Toolbox:
                 self.state.options = change["configuration"]["options"]
                 self.view = change["configuration"]
                 name = next(o["name"] for o in self.view["catalog_options"] if o["id"] == oid)
-                notes.append(f"Added {name} because your requirements need it.")
+                notes.append(t("added_for_needs", name=name))
         out = self.summarize_view(self.view)
         out["notes"] = notes
         return out
@@ -347,16 +348,16 @@ class Toolbox:
                 if len(evs) < 2:
                     raise ToolError("comparison needs 2-3 valid model_ids.")
                 return ui.comparison(evs)
-            return ui.model_cards(evs, spec.title or "Recommended for you")
+            return ui.model_cards(evs, spec.title)
         if spec.type == "tradeoffs":
             if not self.state.last_tradeoffs:
                 raise ToolError("No trade-offs available; call search_models first.")
-            return ui.tradeoffs(self.state.last_tradeoffs, spec.title or "Possible trade-offs")
+            return ui.tradeoffs(self.state.last_tradeoffs, spec.title)
         view = self.view or await self.current_view()
         if not view:
             raise ToolError(f"{spec.type} needs a selected model; call select_model first.")
         if spec.type == "option_toggles":
-            return ui.option_toggles(view, spec.option_ids or None, spec.title or "Suggested options")
+            return ui.option_toggles(view, spec.option_ids or None, spec.title)
         return ui.summary(view, self.state.requirements, self.state.assumptions)
 
     # -- dispatcher used by the LLM agent --------------------------------------

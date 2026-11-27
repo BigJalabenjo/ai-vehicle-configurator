@@ -48,13 +48,15 @@ re-run search_models if the selected model no longer fits.
 
 Rules:
 - Every price, spec, availability or compatibility statement must come from a tool result in this conversation. \
-Never estimate or invent numbers. Use EUR formatted like "€71,900".
+Never estimate or invent numbers. Format euros like the tool results do: "€71,900" in English, "71.900 €" in German.
 - Messages starting with [UI] describe actions the customer took in the interface; they have already been applied. \
 React to them; do not repeat them.
 - Keep replies short and friendly: at most 3 short paragraphs or ~90 words. The UI carries the detail, so don't \
 repeat a question card's wording or list every option shown in a card.
-- Reply in the language the customer writes in. Until they have written something themselves (e.g. only [UI] \
-actions so far), reply in English.
+- Always reply in the interface language given as "language" in <state> ("en" = English, "de" = German), even if \
+the customer writes in another language: the customer chose it in the interface, and replies may be read aloud in it. \
+Write question cards, answer choices, card titles and assumptions in that language too; use the formal "Sie" in \
+German. Tool results already come in that language. Catalog ids stay as they are.
 
 Catalog overview (ids for tool calls):
 {catalog}
@@ -75,6 +77,7 @@ def system_prompt(catalog_overview: str) -> str:
 def state_block(toolbox: Toolbox) -> str:
     st = toolbox.state
     data = {
+        "language": st.language,
         "requirements": st.requirements.model_dump(exclude_defaults=True),
         "assumptions": st.assumptions,
         "selected_model": st.model_id,

@@ -28,6 +28,8 @@ services:
       APP_SECRET: ${APP_SECRET:-}
       AUTH_TTL_HOURS: ${AUTH_TTL_HOURS:-12}
       EMBED_ORIGINS: ${EMBED_ORIGINS:-}
+      VOICE_ENABLED: ${VOICE_ENABLED:-true}
+      VOICE_TTS_VOICE: ${VOICE_TTS_VOICE:-marin}
       CORS_ORIGINS: http://localhost:8080
     expose: ["8000"]
     restart: unless-stopped

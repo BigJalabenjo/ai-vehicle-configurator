@@ -7,6 +7,7 @@ import logging
 
 import httpx
 
+from . import i18n
 from .domain import Requirements
 
 log = logging.getLogger("agent.catalog")
@@ -28,13 +29,14 @@ class CatalogClient:
                  timeout_s: float = 5.0, retries: int = 2):
         self._client = httpx.AsyncClient(base_url=base_url, timeout=timeout_s, transport=transport)
         self._retries = retries
-        self._catalog: dict | None = None
+        self._catalog: dict[str, dict] = {}
 
     async def close(self) -> None:
         await self._client.aclose()
 
     async def _request(self, method: str, path: str, json: dict | None = None, request_id: str | None = None) -> dict:
-        headers = {"x-request-id": request_id} if request_id else {}
+        # The catalog answers in the session's language (names, rule messages, reasons).
+        headers = {"accept-language": i18n.lang(), **({"x-request-id": request_id} if request_id else {})}
         for attempt in range(self._retries + 1):
             try:
                 resp = await self._client.request(method, path, json=json, headers=headers)
@@ -56,9 +58,11 @@ class CatalogClient:
         return await self._request("GET", "/health")
 
     async def catalog(self) -> dict:
-        if self._catalog is None:
-            self._catalog = await self._request("GET", "/v1/catalog")
-        return self._catalog
+        """The catalog in the current language (cached per language)."""
+        code = i18n.lang()
+        if code not in self._catalog:
+            self._catalog[code] = await self._request("GET", "/v1/catalog")
+        return self._catalog[code]
 
     async def recommend(self, req: Requirements, model_ids: list[str] | None = None, limit: int = 3) -> dict:
         return await self._request("POST", "/v1/recommendations",

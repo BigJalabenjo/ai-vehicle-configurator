@@ -2,6 +2,9 @@
 // Renders the agent's messages and adaptive UI components; every user interaction is sent
 // back to the agent service as either a free-text message or a structured action.
 
+import { VoiceMode, voiceSupported } from "./voice.js";
+import { applyStatic, eur, lang, mountSwitch, num, setLang, t, words } from "./i18n.js";
+
 const API = "/api";
 const $ = (sel) => document.querySelector(sel);
 const els = {
@@ -9,6 +12,7 @@ const els = {
   needs: $("#needs"), assumptions: $("#assumptions"),
   assumptionsBox: $("#assumptions-box"), newSession: $("#new-session"),
   stage: $("#stage"), chatMin: $("#chat-min"), fab: $("#chat-fab"), needsBar: $("#needs-bar"),
+  voice: $("#voice"), voiceStatus: $("#voice-status"), voiceLabel: $("#voice-label"), voiceStop: $("#voice-stop"),
 };
 
 let sessionId = null;
@@ -18,9 +22,8 @@ let busy = false;
 
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const md = (s) => esc(s).replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>").replace(/\n/g, "<br>");
-const eur = (v) => "€" + Number(v).toLocaleString("en-US");
-const POWERTRAIN = { bev: "Electric", phev: "Plug-in hybrid", petrol: "Petrol", diesel: "Diesel" };
-const BODY = { sav: "SAV", touring: "Touring", gran_coupe: "Gran Coupé", tourer: "Active Tourer", sedan: "Sedan" };
+const POWERTRAIN = () => words("powertrain");
+const BODY = () => words("body");
 
 // Line-drawn side profiles per body style (no photos in the fictional catalog).
 const CAR_PATHS = {
@@ -71,10 +74,10 @@ async function api(path, options = {}) {
   const body = await res.json().catch(() => ({}));
   if (res.status === 401 && !path.startsWith("/auth/")) {
     location.replace("/login.html");  // session expired or signed out elsewhere
-    throw new Error("Please sign in.");
+    throw new Error(t("sign_in_please"));
   }
   if (!res.ok) {
-    const err = new Error(typeof body.detail === "string" ? body.detail : `Request failed (${res.status})`);
+    const err = new Error(typeof body.detail === "string" ? body.detail : t("request_failed", { status: res.status }));
     err.status = res.status;
     throw err;
   }
@@ -84,8 +87,10 @@ async function api(path, options = {}) {
 // ------------------------------------------------------------------ session
 
 async function startSession() {
-  const body = await api("/sessions", { method: "POST" });
+  const body = await api("/sessions", { method: "POST", body: JSON.stringify({ language: lang() }) });
   sessionId = body.session_id;
+  setVoiceAvailable(body.voice);
+  voice.interrupt();
   try { localStorage.setItem("sessionId", sessionId); } catch { /* storage unavailable */ }
   els.messages.innerHTML = "";
   document.body.classList.remove("started");
@@ -100,15 +105,33 @@ async function restoreSession() {
   try {
     const body = await api(`/sessions/${saved}`);
     sessionId = saved;
-    els.messages.innerHTML = "";
-    body.transcript.forEach((m) => renderMessage(m));
-    renderState(body.state);
+    setVoiceAvailable(body.voice);
+    // The language may have been switched in another tab since this conversation started.
+    if (body.state.language !== lang()) return switchLanguage(lang());
+    renderSession(body);
   } catch {
     await startSession();
   }
 }
 
-async function send(payload, echo, { silent = false } = {}) {
+function renderSession(body) {
+  els.messages.innerHTML = "";
+  body.transcript.forEach((m) => renderMessage(m));
+  if (body.transcript.some((m) => m.role === "user")) document.body.classList.add("started");
+  renderState(body.state);
+}
+
+// The agent switches the conversation's language (replies, catalog texts, voice); the transcript
+// and configuration are then re-read, so names and rule messages appear in the new language too.
+async function switchLanguage(code) {
+  if (!sessionId) return;
+  await whenIdle();
+  voice.interrupt();
+  await send({ action: { type: "set_language", language: code } }, null, { silent: true, render: false });
+  renderSession(await api(`/sessions/${sessionId}`));
+}
+
+async function send(payload, echo, { silent = false, render = true } = {}) {
   if (busy) return;
   busy = true;
   setBusy(true);
@@ -117,7 +140,9 @@ async function send(payload, echo, { silent = false } = {}) {
   try {
     const body = await api(`/sessions/${sessionId}/turn`, { method: "POST", body: JSON.stringify(payload) });
     typing?.remove();
+    if (!render) return;
     if (body.message) renderMessage(body.message, { animate: true });
+    if (body.message?.text) voice.speak(body.message.text);  // only while voice mode is on
     renderState(body.state);
     if (body.feedback) showFeedback(body.feedback);
     // A conflict caused via the chat is resolved in the same dialog as one caused on the stage.
@@ -132,7 +157,7 @@ async function send(payload, echo, { silent = false } = {}) {
     typing?.remove();
     if (silent) { toast(err.message, "error"); return; }
     if (err.status === 404) {
-      renderError("Your session expired. Starting a new one…");
+      renderError(t("session_expired"));
       await startSession();
     } else {
       renderError(err.message, () => send(payload));
@@ -168,7 +193,7 @@ function showTyping() {
 function renderError(text, retry) {
   if (chatMinimized) setChatMinimized(false);
   const el = h("div", { class: "msg assistant error" }, esc(text) + " ");
-  if (retry) el.append(h("button", { class: "link", onclick: () => { el.remove(); retry(); } }, "Retry"));
+  if (retry) el.append(h("button", { class: "link", onclick: () => { el.remove(); retry(); } }, t("retry")));
   els.messages.append(el);
   scroll();
 }
@@ -176,7 +201,6 @@ function renderError(text, retry) {
 // Only the latest assistant message keeps its full UI. Older ones are condensed so the
 // conversation stays lean: answered/stale prompts disappear, bigger blocks fold into one line.
 const TRANSIENT = ["question", "slider", "conflict", "tradeoffs", "notice"];
-const FOLD_LABEL = { model_cards: "suggested models", comparison: "comparison", option_toggles: "suggested options", summary: "summary" };
 
 function condensePrevious() {
   els.messages.querySelectorAll(".msg.assistant:not(.condensed)").forEach((msg) => {
@@ -184,7 +208,7 @@ function condensePrevious() {
     msg.querySelectorAll(":scope > .comp").forEach((comp) => {
       const type = comp.dataset.type;
       if (TRANSIENT.includes(type)) { comp.remove(); return; }
-      const fold = h("details", { class: "fold" }, `<summary>Show earlier ${FOLD_LABEL[type] || "details"}${comp.dataset.hint ? `: ${esc(comp.dataset.hint)}` : ""}</summary>`);
+      const fold = h("details", { class: "fold" }, `<summary>${t("show_earlier", { what: words("fold")[type] || t("details") })}${comp.dataset.hint ? `: ${esc(comp.dataset.hint)}` : ""}</summary>`);
       comp.replaceWith(fold);
       fold.append(comp);
     });
@@ -278,13 +302,13 @@ const COMPONENTS = {
 
   slider(c) {
     const el = h("div", { class: "comp slider" }, `<p>${esc(c.prompt)}</p>`);
-    const input = h("input", { type: "range", min: 0, max: 100, value: Math.round(c.value * 100), "aria-label": "Comfort versus sporty" });
+    const input = h("input", { type: "range", min: 0, max: 100, value: Math.round(c.value * 100), "aria-label": t("comfort_vs_sporty") });
     const row = h("div", { class: "slider-row" });
     row.append(h("span", {}, esc(c.left_label)), input, h("span", {}, esc(c.right_label)));
     const apply = h("button", {
       class: "btn primary small",
-      onclick: () => { markDone(el); act({ type: "set_preference", key: c.preference, value: input.value / 100 }, `Preference: ${input.value}% sporty`); },
-    }, "Apply");
+      onclick: () => { markDone(el); act({ type: "set_preference", key: c.preference, value: input.value / 100 }, t("preference_echo", { pct: input.value })); },
+    }, t("apply"));
     el.append(row, apply);
     return el;
   },
@@ -294,19 +318,19 @@ const COMPONENTS = {
     const grid = h("div", { class: "cards" });
     const best = c.cards.findIndex((x) => x.fits);
     c.cards.forEach((card, i) => {
-      const status = card.fits ? `<span class="status ok">Meets your needs</span>`
-        : `<span class="status warn" title="${esc(card.violations.join("; "))}">${esc(card.violations[0] || "Needs a compromise")}</span>`;
+      const status = card.fits ? `<span class="status ok">${t("meets_needs")}</span>`
+        : `<span class="status warn" title="${esc(card.violations.join("; "))}">${esc(card.violations[0] || t("needs_compromise"))}</span>`;
       const item = h("article", { class: "model-card", title: card.reasons.join(" · ") }, `
-        <p class="kicker">${esc(BODY[card.body] || card.body)} · ${esc(card.powertrain)}</p>
+        <p class="kicker">${esc(BODY()[card.body] || card.body)} · ${esc(card.powertrain)}</p>
         <h4>${esc(card.name.replace(/^BMW /, ""))}</h4>
         <div class="car">${carVisual(card.model_id, card.body, card.name)}</div>
-        <div class="price">from <strong>${eur(card.entry_price)}</strong></div>
+        <div class="price">${t("from")} <strong>${eur(card.entry_price)}</strong></div>
         <p class="facts">${card.highlights.slice(0, 3).map(esc).join(" · ")}</p>
         ${status}`);
       item.append(h("button", {
         class: `btn ${i === best ? "primary" : "secondary"}`,
-        onclick: () => act({ type: "select_model", model_id: card.model_id }, `Configure the ${card.name}`),
-      }, "Configure"));
+        onclick: () => act({ type: "select_model", model_id: card.model_id }, t("configure_the", { name: card.name })),
+      }, t("configure")));
       grid.append(item);
     });
     el.append(grid);
@@ -317,25 +341,25 @@ const COMPONENTS = {
     const head = c.models.map((m) => `<th>${esc(m.name)}</th>`).join("");
     const rows = c.rows.map((r) => `<tr><th>${esc(r.label)}</th>${r.values.map((v, i) =>
       `<td class="${i === r.best_index ? "best" : ""}">${esc(v)}</td>`).join("")}</tr>`).join("");
-    const el = h("div", { class: "comp" }, `<h3>Side by side</h3><div class="table-wrap"><table class="compare"><thead><tr><th></th>${head}</tr></thead><tbody>${rows}</tbody></table></div>`);
+    const el = h("div", { class: "comp" }, `<h3>${t("side_by_side")}</h3><div class="table-wrap"><table class="compare"><thead><tr><th></th>${head}</tr></thead><tbody>${rows}</tbody></table></div>`);
     const btns = h("div", { class: "choices" });
     c.models.forEach((m) => btns.append(h("button", {
-      class: "btn secondary small", onclick: () => act({ type: "select_model", model_id: m.model_id }, `Configure the ${m.name}`),
-    }, `Configure ${esc(m.name.replace("BMW ", ""))}`)));
+      class: "btn secondary small", onclick: () => act({ type: "select_model", model_id: m.model_id }, t("configure_the", { name: m.name })),
+    }, t("configure_short", { name: esc(m.name.replace("BMW ", "")) }))));
     el.append(btns);
     return el;
   },
 
   tradeoffs(c) {
     const el = h("div", { class: "comp tradeoffs" }, `<h3>${esc(c.title)}</h3>`);
-    c.items.forEach((t) => {
-      const model = (t.description.match(/^(BMW [^(]+?) would fit/) || [])[1] || "";
-      const row = h("div", { class: "tradeoff", title: t.description },
-        `<span>${esc(t.label)}${model ? ` <span class="muted">→ ${esc(model.replace(/^BMW /, ""))}</span>` : ""}</span>`);
+    c.items.forEach((item) => {
+      const model = (item.description.match(/^(BMW [^(]+?) (?:would fit|würde passen)/) || [])[1] || "";
+      const row = h("div", { class: "tradeoff", title: item.description },
+        `<span>${esc(item.label)}${model ? ` <span class="muted">→ ${esc(model.replace(/^BMW /, ""))}</span>` : ""}</span>`);
       row.append(h("button", {
         class: "text-link",
-        onclick: () => { markDone(el); act({ type: "apply_tradeoff", patch: t.patch, label: t.label }, `Accept: ${t.label}`); },
-      }, "Accept"));
+        onclick: () => { markDone(el); act({ type: "apply_tradeoff", patch: item.patch, label: item.label }, t("accept_echo", { label: item.label })); },
+      }, t("accept")));
       el.append(row);
     });
     return el;
@@ -344,15 +368,15 @@ const COMPONENTS = {
   option_toggles(c) {
     const el = h("div", { class: "comp" }, `<h3>${esc(c.title)}</h3>`);
     c.options.slice(0, 4).forEach((o) => el.append(optionRow(o, true)));
-    if (c.options.length > 4) el.append(h("p", { class: "muted small-note" }, "More options in the configurator."));
+    if (c.options.length > 4) el.append(h("p", { class: "muted small-note" }, t("more_options")));
     return el;
   },
 
   conflict(c) {
     if (layout === "configure") {
-      return h("div", { class: "comp notice warning" }, `This combination isn't possible: ${esc(c.message)}`);
+      return h("div", { class: "comp notice warning" }, t("not_possible_inline", { message: esc(c.message) }));
     }
-    const el = h("div", { class: "comp conflict" }, `<p><strong>This combination isn't possible.</strong> ${esc(c.message)}</p>`);
+    const el = h("div", { class: "comp conflict" }, `<p><strong>${t("not_possible")}</strong> ${esc(c.message)}</p>`);
     const row = h("div", { class: "choices" });
     c.resolutions.forEach((r) => row.append(h("button", {
       class: r.change ? "btn primary small" : "btn secondary small",
@@ -372,24 +396,24 @@ const COMPONENTS = {
 
   summary(c) {
     const lines = c.lines.filter((l) => l.status !== "standard").map((l) =>
-      `<tr><td>${esc(l.name)}<div class="why">${esc(l.reason)}</div></td><td class="num">${l.price ? eur(l.price) : "incl."}</td></tr>`).join("");
+      `<tr><td>${esc(l.name)}<div class="why">${esc(l.reason)}</div></td><td class="num">${l.price ? eur(l.price) : t("incl")}</td></tr>`).join("");
     const budget = c.budget.max != null
-      ? `<p class="check ${c.budget.over_by ? "bad" : "good"}">${c.budget.over_by ? `${eur(c.budget.over_by)} over` : `${eur(c.budget.remaining)} under`} your ${eur(c.budget.max)} budget</p>` : "";
+      ? `<p class="check ${c.budget.over_by ? "bad" : "good"}">${c.budget.over_by ? t("over_budget_by", { amount: eur(c.budget.over_by) }) : t("under_budget_by", { amount: eur(c.budget.remaining) })} ${t("your_budget", { amount: eur(c.budget.max) })}</p>` : "";
     const unmet = c.unmet_requirements.length
       ? `<ul class="violations">${c.unmet_requirements.map((u) => `<li>${esc(u)}</li>`).join("")}</ul>`
-      : `<p class="check good">✓ Meets all your needs: ${c.requirements.map(esc).join(" · ")}</p>`;
+      : `<p class="check good">${t("meets_all", { list: c.requirements.map(esc).join(" · ") })}</p>`;
     const s = c.specs;
-    const facts = [POWERTRAIN[s.powertrain], s.electric_range_km ? `${s.electric_range_km} km electric range` : `${s.total_range_km.toLocaleString("en-US")} km range`,
-      `${s.seats} seats`, `${s.trunk_l} l boot`, s.tow_kg ? `tows ${s.tow_kg.toLocaleString("en-US")} kg` : ""].filter(Boolean);
+    const facts = [POWERTRAIN()[s.powertrain], s.electric_range_km ? t("km_electric", { km: num(s.electric_range_km) }) : t("km_range", { km: num(s.total_range_km) }),
+      t("seats_n", { n: s.seats }), t("boot_l", { l: s.trunk_l }), s.tow_kg ? t("tows_kg", { kg: num(s.tow_kg) }) : ""].filter(Boolean);
     return h("div", { class: "comp summary" }, `
-      <div class="summary-head"><div><p class="eyebrow">Your configuration</p><h3>${esc(c.model_name)}</h3></div>
-        <span class="tag ${c.valid ? "dark" : "outline"}">${c.valid ? "Valid configuration" : "Needs attention"}</span></div>
+      <div class="summary-head"><div><p class="eyebrow">${t("your_configuration")}</p><h3>${esc(c.model_name)}</h3></div>
+        <span class="tag ${c.valid ? "dark" : "outline"}">${c.valid ? t("valid") : t("needs_attention")}</span></div>
       <div class="car">${carVisual(c.model_id, s.body, c.model_name)}</div>
       <div class="facts">${facts.map((f) => `<span>${esc(f)}</span>`).join("")}</div>
-      <table class="lines"><tr><td>Base price</td><td class="num">${eur(c.base_price)}</td></tr>${lines}
-        <tr class="total"><td>Total price</td><td class="num">${eur(c.total_price)}</td></tr></table>
+      <table class="lines"><tr><td>${t("base_price")}</td><td class="num">${eur(c.base_price)}</td></tr>${lines}
+        <tr class="total"><td>${t("total_price")}</td><td class="num">${eur(c.total_price)}</td></tr></table>
       ${budget}${unmet}
-      ${c.assumptions.length ? `<details><summary>Assumptions</summary><ul>${c.assumptions.map((a) => `<li>${esc(a)}</li>`).join("")}</ul></details>` : ""}`);
+      ${c.assumptions.length ? `<details><summary>${t("assumptions")}</summary><ul>${c.assumptions.map((a) => `<li>${esc(a)}</li>`).join("")}</ul></details>` : ""}`);
   },
 };
 
@@ -408,9 +432,9 @@ function optionRow(o, compact = false) {
   const detail = o.state === "unavailable" ? o.note
     : o.state === "included" || o.state === "standard" ? o.note
     : "";
-  const rec = o.recommended && !compact ? `<span class="tag rec">Suggested</span>` : "";
+  const rec = o.recommended && !compact ? `<span class="tag rec">${t("suggested")}</span>` : "";
   row.append(box, h("span", { class: "opt-name" }, `${esc(o.name)}${rec}${detail ? `<small>${esc(detail)}</small>` : ""}`),
-    h("span", { class: "opt-price" }, o.state === "included" || o.state === "standard" ? "incl." : eur(o.price)));
+    h("span", { class: "opt-price" }, o.state === "included" || o.state === "standard" ? t("incl") : eur(o.price)));
   return row;
 }
 
@@ -419,15 +443,15 @@ function optionRow(o, compact = false) {
 function renderNeeds(container, state, removable = true, onStage = false) {
   container.innerHTML = "";
   if (!state.requirements.length) {
-    container.innerHTML = onStage ? `<span class="muted">None yet</span>` : `<p class="muted">Nothing yet. Describe your situation in the chat.</p>`;
+    container.innerHTML = onStage ? `<span class="muted">${t("none_yet")}</span>` : `<p class="muted">${t("nothing_yet")}</p>`;
   }
   state.requirements.forEach((r) => {
     const chip = h("span", { class: "chip" }, esc(r.label));
     if (removable) chip.append(h("button", {
-      class: "x", title: "Remove this requirement", "aria-label": `Remove ${r.label}`,
+      class: "x", title: t("remove_requirement"), "aria-label": t("remove_x", { label: r.label }),
       onclick: () => onStage
         ? updateNeeds({ [r.field]: null })
-        : act({ type: "remove_requirement", field: r.field }, `Remove requirement: ${r.label}`),
+        : act({ type: "remove_requirement", field: r.field }, t("remove_echo", { label: r.label })),
     }, "×"));
     container.append(chip);
   });
@@ -449,7 +473,11 @@ function renderState(state) {
   const byId = Object.fromEntries(v.catalog_options.map((o) => [o.id, o]));
   els.messages.querySelectorAll("input[data-opt]").forEach((box) => {
     const o = byId[box.dataset.opt];
-    if (o) box.checked = ["selected", "included", "standard"].includes(o.state);
+    if (!o) return;
+    box.checked = ["selected", "included", "standard"].includes(o.state);
+    // Names follow the current language, also in rows shown before a language switch.
+    const name = box.closest(".opt")?.querySelector(".opt-name")?.firstChild;
+    if (name?.nodeType === Node.TEXT_NODE) name.nodeValue = o.name;
   });
 }
 
@@ -499,39 +527,39 @@ function renderStage(v, state) {
   if (!activeCat || !groups[activeCat]) {
     activeCat = cats.find((c) => groups[c].some((o) => o.recommended)) || cats[0];
   }
-  const rangeLabel = sp.powertrain === "bev" ? "Electric range" : "Total range";
-  const range = (sp.powertrain === "bev" ? sp.electric_range_km : sp.total_range_km).toLocaleString("en-US");
+  const rangeLabel = sp.powertrain === "bev" ? t("electric_range") : t("total_range");
+  const range = num(sp.powertrain === "bev" ? sp.electric_range_km : sp.total_range_km);
 
   els.stage.innerHTML = `
     <div class="stage-inner">
       <header class="stage-head">
         <div>
-          <p class="kicker">${esc(BODY[sp.body] || sp.body)} · ${esc(POWERTRAIN[sp.powertrain])}</p>
+          <p class="kicker">${esc(BODY()[sp.body] || sp.body)} · ${esc(POWERTRAIN()[sp.powertrain])}</p>
           <h1>${esc(v.model_name)}</h1>
-          <p class="status ${ok ? "ok" : "warn"}">${ok ? "Valid configuration · meets all your needs" : esc([...v.issues.map((i) => i.message), ...v.unmet_requirements.map((u) => u.message)][0] || "Needs attention")}</p>
+          <p class="status ${ok ? "ok" : "warn"}">${ok ? t("valid_meets_all") : esc([...v.issues.map((i) => i.message), ...v.unmet_requirements.map((u) => u.message)][0] || t("needs_attention"))}</p>
         </div>
         <div class="stage-price">
-          <span>Total price</span>
+          <span>${t("total_price")}</span>
           <strong>${eur(v.total_price)}</strong>
           ${b.max ? `<div class="budget-bar ${b.over_by ? "over" : ""}"><div></div></div>
-            <span class="budget-note ${b.over_by ? "over" : ""}">${b.over_by ? `${eur(b.over_by)} over your budget` : `${eur(b.remaining)} left of ${eur(b.max)}`}</span>` : ""}
+            <span class="budget-note ${b.over_by ? "over" : ""}">${b.over_by ? t("over_your_budget", { amount: eur(b.over_by) }) : t("left_of", { amount: eur(b.remaining), max: eur(b.max) })}</span>` : ""}
         </div>
       </header>
       <div class="stage-car">${carVisual(v.model_id, sp.body, v.model_name)}</div>
       <dl class="stage-specs">
         <div><dt>${rangeLabel}</dt><dd>${range} km</dd></div>
-        <div><dt>0–100 km/h</dt><dd>${sp.acceleration_s} s</dd></div>
-        <div><dt>Seats</dt><dd>${sp.seats}</dd></div>
-        <div><dt>Boot</dt><dd>${sp.trunk_l} l</dd></div>
+        <div><dt>0–100 km/h</dt><dd>${lang() === "de" ? String(sp.acceleration_s).replace(".", ",") : sp.acceleration_s} s</dd></div>
+        <div><dt>${t("seats")}</dt><dd>${sp.seats}</dd></div>
+        <div><dt>${t("boot")}</dt><dd>${sp.trunk_l} l</dd></div>
       </dl>
       <section class="stage-needs-box">
-        <div class="stage-needs"><span class="label">Your needs</span><div class="chips" id="stage-needs"></div>
-          <button type="button" class="link-btn" id="needs-adjust" aria-expanded="${needsDraft ? "true" : "false"}">${needsDraft ? "Close" : "Adjust"}</button></div>
+        <div class="stage-needs"><span class="label">${t("your_needs")}</span><div class="chips" id="stage-needs"></div>
+          <button type="button" class="link-btn" id="needs-adjust" aria-expanded="${needsDraft ? "true" : "false"}">${needsDraft ? t("close") : t("adjust")}</button></div>
         <div id="needs-editor"></div>
       </section>
       <nav class="tabs" role="tablist"></nav>
       <div class="tiles" role="tabpanel"></div>
-      <div class="stage-actions"><button class="btn primary" type="button" id="review">Review summary</button></div>
+      <div class="stage-actions"><button class="btn primary" type="button" id="review">${t("review_summary")}</button></div>
     </div>`;
 
   const fill = els.stage.querySelector(".budget-bar div");
@@ -556,7 +584,7 @@ function renderStage(v, state) {
     if (notOffered.length) {
       // Options this model doesn't offer stay out of the way, one click away for reference.
       const more = h("details", { class: "not-offered", open: openNotOffered.has(cat) || undefined },
-        `<summary>Not available on this model (${notOffered.length})</summary>`);
+        `<summary>${t("not_offered", { n: notOffered.length })}</summary>`);
       more.addEventListener("toggle", () => { more.open ? openNotOffered.add(cat) : openNotOffered.delete(cat); });
       const list = h("div", { class: "tiles" });
       notOffered.forEach((o) => list.append(optionTile(o)));
@@ -572,7 +600,7 @@ function renderStage(v, state) {
   showCat(activeCat);
   els.stage.querySelector("#review").addEventListener("click", () => {
     if (chatMinimized) setChatMinimized(false);
-    act({ type: "request_summary" }, "Show summary");
+    act({ type: "request_summary" }, t("show_summary"));
   });
 }
 
@@ -585,9 +613,9 @@ function optionTile(o) {
     type: "button", class: `tile ${o.state}${on ? " on" : ""}${marks}`, disabled: locked || undefined, "data-opt": o.id,
     title: [o.recommended_reason, o.description].filter(Boolean).join(" · "), "aria-pressed": String(on),
   }, `<span class="tile-check" aria-hidden="true"></span>
-     <span class="tile-name">${esc(o.name)}${o.recommended && !on ? `<span class="tag rec">Suggested</span>` : ""}</span>
+     <span class="tile-name">${esc(o.name)}${o.recommended && !on ? `<span class="tag rec">${t("suggested")}</span>` : ""}</span>
      ${note ? `<span class="tile-note">${esc(note)}</span>` : ""}
-     <span class="tile-price">${locked ? "incl." : eur(o.price)}</span>`);
+     <span class="tile-price">${locked ? t("incl") : eur(o.price)}</span>`);
   tile.addEventListener("click", () => {
     changeOption(on ? "remove" : "add", o.id);
   });
@@ -601,41 +629,41 @@ let needsDraft = null;  // requirement values being edited on the stage; null = 
 const updateNeeds = (patch) =>
   send({ action: { type: "update_requirements", patch } }, null, { silent: true });
 
-const TOWING = [[null, "Not needed"], [0, "Bike carrier"], [750, "750 kg"], [1500, "1,500 kg"], [2000, "2,000 kg"]];
+const TOWING = () => [[null, t("not_needed")], [0, t("bike_carrier")], ...[750, 1500, 2000].map((kg) => [kg, `${num(kg)} kg`])];
 
 function needsEditor(saved) {
   const d = needsDraft;
   const powertrainMode = d.powertrain_required.length ? "required" : "preferred";
   const powertrains = d.powertrain_required.length ? d.powertrain_required : d.powertrain_preferred;
-  const towing = TOWING.some(([v]) => v === d.towing_kg) ? TOWING : [...TOWING, [d.towing_kg, `${Number(d.towing_kg).toLocaleString("en-US")} kg`]];
+  const towing = TOWING().some(([v]) => v === d.towing_kg) ? TOWING() : [...TOWING(), [d.towing_kg, `${num(d.towing_kg)} kg`]];
   const numOrNull = (v) => (v === "" || v == null ? null : Number(v));
   const toggles = (name, labels, chosen) => Object.entries(labels).map(([k, label]) =>
     `<button type="button" class="pick" data-${name}="${k}" aria-pressed="${chosen.includes(k)}">${esc(label)}</button>`).join("");
   const sport = d.sportiness == null ? null : Math.round(d.sportiness * 100);
 
-  const form = h("form", { class: "needs-editor", "aria-label": "Adjust your needs" }, `
-    <label class="field"><span>Budget up to (€)</span>
-      <input name="budget_max" type="number" min="0" step="1000" inputmode="numeric" placeholder="No limit" value="${d.budget_max ?? ""}"></label>
-    <div class="field wide"><span>Powertrain
-        <select name="pt_mode" aria-label="Powertrain strictness">
-          <option value="preferred" ${powertrainMode === "preferred" ? "selected" : ""}>preferred</option>
-          <option value="required" ${powertrainMode === "required" ? "selected" : ""}>required</option></select></span>
-      <div class="picks">${toggles("pt", POWERTRAIN, powertrains)}</div></div>
-    <div class="field wide"><span>Body style</span><div class="picks">${toggles("body", BODY, d.body_styles)}</div></div>
-    <label class="field"><span>Seats, at least</span>
-      <input name="min_seats" type="number" min="2" max="9" placeholder="Any" value="${d.min_seats ?? ""}"></label>
-    <label class="field"><span>Child seats</span>
-      <input name="child_seats" type="number" min="0" max="6" placeholder="None" value="${d.child_seats || ""}"></label>
-    <label class="field"><span>Boot, at least (l)</span>
-      <input name="min_trunk_l" type="number" min="0" max="2000" step="10" placeholder="Any" value="${d.min_trunk_l ?? ""}"></label>
-    <label class="field"><span>Towing</span><select name="towing_kg">
+  const form = h("form", { class: "needs-editor", "aria-label": t("adjust_needs") }, `
+    <label class="field"><span>${t("budget_up_to")}</span>
+      <input name="budget_max" type="number" min="0" step="1000" inputmode="numeric" placeholder="${t("no_limit")}" value="${d.budget_max ?? ""}"></label>
+    <div class="field wide"><span>${t("powertrain")}
+        <select name="pt_mode" aria-label="${t("powertrain_strictness")}">
+          <option value="preferred" ${powertrainMode === "preferred" ? "selected" : ""}>${t("preferred")}</option>
+          <option value="required" ${powertrainMode === "required" ? "selected" : ""}>${t("required")}</option></select></span>
+      <div class="picks">${toggles("pt", POWERTRAIN(), powertrains)}</div></div>
+    <div class="field wide"><span>${t("body_style")}</span><div class="picks">${toggles("body", BODY(), d.body_styles)}</div></div>
+    <label class="field"><span>${t("seats_at_least")}</span>
+      <input name="min_seats" type="number" min="2" max="9" placeholder="${t("any")}" value="${d.min_seats ?? ""}"></label>
+    <label class="field"><span>${t("child_seats")}</span>
+      <input name="child_seats" type="number" min="0" max="6" placeholder="${t("none")}" value="${d.child_seats || ""}"></label>
+    <label class="field"><span>${t("boot_at_least")}</span>
+      <input name="min_trunk_l" type="number" min="0" max="2000" step="10" placeholder="${t("any")}" value="${d.min_trunk_l ?? ""}"></label>
+    <label class="field"><span>${t("towing")}</span><select name="towing_kg">
       ${towing.map(([v, label]) => `<option value="${v ?? ""}" ${v === d.towing_kg ? "selected" : ""}>${esc(label)}</option>`).join("")}</select></label>
-    <label class="field check"><input name="long_distance" type="checkbox" ${d.long_distance ? "checked" : ""}><span>Regular long-distance trips</span></label>
-    <div class="field wide"><span>Comfort or sport <output>${sport == null ? "No preference" : `${sport}% sporty`}</output></span>
-      <input name="sportiness" type="range" min="0" max="100" step="5" value="${sport ?? 50}" aria-label="Comfort to sport"></div>
+    <label class="field check"><input name="long_distance" type="checkbox" ${d.long_distance ? "checked" : ""}><span>${t("long_distance")}</span></label>
+    <div class="field wide"><span>${t("comfort_or_sport")} <output>${sport == null ? t("no_preference") : t("pct_sporty", { pct: sport })}</output></span>
+      <input name="sportiness" type="range" min="0" max="100" step="5" value="${sport ?? 50}" aria-label="${t("comfort_to_sport")}"></div>
     <div class="editor-actions">
-      <button type="button" class="btn secondary small" data-cancel>Cancel</button>
-      <button type="submit" class="btn primary small">Apply</button></div>`);
+      <button type="button" class="btn secondary small" data-cancel>${t("cancel")}</button>
+      <button type="submit" class="btn primary small">${t("apply")}</button></div>`);
 
   const read = () => {
     const f = form.elements;
@@ -658,7 +686,7 @@ function needsEditor(saved) {
   form.addEventListener("input", (e) => {
     if (e.target.name === "sportiness") {
       needsDraft.sportiness = Number(e.target.value) / 100;
-      form.querySelector("output").textContent = `${e.target.value}% sporty`;
+      form.querySelector("output").textContent = t("pct_sporty", { pct: e.target.value });
     }
   });
   form.addEventListener("submit", (e) => {
@@ -676,10 +704,10 @@ function needsEditor(saved) {
 }
 
 function showNeedsFeedback(fb) {
-  if (fb.status === "rejected") { toast(fb.error || "Those needs couldn't be saved.", "warning"); return; }
+  if (fb.status === "rejected") { toast(fb.error || t("needs_not_saved"), "warning"); return; }
   if (fb.status === "noop") return;
-  if (fb.unmet.length) toast(`Needs updated. This configuration doesn't meet: ${fb.unmet.join("; ")}`, "warning");
-  else toast("Needs updated. This configuration still meets them.", "ok");
+  if (fb.unmet.length) toast(t("needs_unmet", { list: fb.unmet.join("; ") }), "warning");
+  else toast(t("needs_ok"), "ok");
 }
 
 // ------------------------------------------------------------------ option-change feedback (stage)
@@ -689,15 +717,16 @@ let flashIds = new Set();      // options that just changed (brief highlight)
 let lastState = null;
 
 function showFeedback(fb) {
+  if (fb.kind === "language") return;
   if (fb.kind === "requirements") { showNeedsFeedback(fb); return; }
   if (fb.status === "conflict" && fb.conflict) { openConflict(fb.conflict); return; }
-  if (fb.status === "rejected") { toast(fb.error || "That change isn't possible.", "warning"); return; }
+  if (fb.status === "rejected") { toast(fb.error || t("change_impossible"), "warning"); return; }
   if (fb.status === "noop") { toast(fb.notes.join(" "), "info"); return; }
   // Short confirmation: skip items that simply went with a removed package, drop the reasons.
   const lines = fb.notes
-    .filter((n) => !/: comes with |would replace/.test(n))
-    .map((n) => n.replace(/^(Removed [^:]+):.*$/, "$1."));
-  toast(lines.join(" ") || "Updated.", "ok");
+    .filter((n) => !/: (?:comes with|gehört zu) |would replace| statt /.test(n))
+    .map((n) => n.replace(/^(Removed [^:]+|[^:]+ entfernt):.*$/, "$1."));
+  toast(lines.join(" ") || t("updated"), "ok");
   flashIds = new Set(fb.changed);
   rerenderStage();
   setTimeout(() => { flashIds = new Set(); rerenderStage(); }, 1400);
@@ -718,7 +747,7 @@ function openConflict(c) {
   const onKey = (e) => { if (e.key === "Escape") close(); };
   const backdrop = h("div", { class: "dialog-backdrop" });
   const dialog = h("div", { class: "dialog", role: "alertdialog", "aria-modal": "true", "aria-labelledby": "dlg-title" },
-    `<p class="dialog-kicker">Conflict</p><h2 id="dlg-title">This combination isn't possible</h2><p>${esc(c.message)}</p>`);
+    `<p class="dialog-kicker">${t("conflict")}</p><h2 id="dlg-title">${t("not_possible_title")}</h2><p>${esc(c.message)}</p>`);
   const row = h("div", { class: "dialog-actions" });
   c.resolutions.forEach((r) => row.append(h("button", {
     type: "button", class: `btn ${r.change ? "primary" : "secondary"}`,
@@ -742,6 +771,57 @@ function toast(text, level = "info") {
   toastTimer = setTimeout(() => el.classList.remove("show"), level === "warning" || level === "error" ? 6000 : 4000);
 }
 
+// ------------------------------------------------------------------ voice
+// Hands-free: the microphone stays open, each utterance becomes a chat message, replies are read
+// out, and talking over a reply stops it. Speech recognition and synthesis go through the agent.
+
+const VOICE_LABEL = { starting: "v_starting", listening: "v_listening", hearing: "v_listening", thinking: "v_thinking", speaking: "v_speaking" };
+let voiceState = "off";
+
+async function voiceRequest(path, init) {
+  const res = await fetch(`${API}/sessions/${sessionId}/voice/${path}`, init);
+  if (res.status === 401) { location.replace("/login.html"); throw new Error(t("sign_in_please")); }
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(typeof body.detail === "string" ? body.detail : t("voice_failed", { status: res.status }));
+  }
+  return res;
+}
+
+const whenIdle = async () => { while (busy) await new Promise((r) => setTimeout(r, 100)); };
+
+const voice = new VoiceMode({
+  transcribe: async (wav) => (await (await voiceRequest("transcribe", {
+    method: "POST", headers: { "content-type": "audio/wav" }, body: wav })).json()).text,
+  synthesize: async (text, signal) => (await voiceRequest("speech", {
+    method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ text }), signal,
+  })).arrayBuffer(),
+  onUtterance: async (text) => { await whenIdle(); await say(text); },
+  onState: (state) => { voiceState = state; renderVoiceState(); },
+  onLevel: (level) => els.voiceStatus.style.setProperty("--level", level.toFixed(2)),
+  onError: (key, detail) => toast(detail || t(key), "error"),
+});
+
+function renderVoiceState() {
+  const on = voiceState !== "off";
+  document.body.classList.toggle("voice-on", on);
+  els.voice.setAttribute("aria-pressed", String(on));
+  els.voice.title = on ? t("end_talk") : t("talk");
+  els.voice.setAttribute("aria-label", els.voice.title);
+  els.voiceStatus.hidden = !on;
+  els.voiceStatus.dataset.state = voiceState;
+  els.voiceLabel.textContent = VOICE_LABEL[voiceState] ? t(VOICE_LABEL[voiceState]) : "";
+}
+
+function setVoiceAvailable(available) {
+  els.voice.hidden = !(available && voiceSupported());
+  if (els.voice.hidden && voice.active) voice.stop();
+}
+
+els.voice.addEventListener("click", () => (voice.active ? voice.stop() : voice.start()));
+els.voiceStop.addEventListener("click", () => voice.stop());
+window.addEventListener("pagehide", () => voice.stop());
+
 // ------------------------------------------------------------------ wiring
 
 els.form.addEventListener("submit", (e) => {
@@ -757,6 +837,13 @@ els.input.addEventListener("keydown", (e) => {
 els.chatMin.addEventListener("click", () => setChatMinimized(true));
 els.fab.addEventListener("click", () => setChatMinimized(false));
 els.newSession.addEventListener("click", () => { if (!busy) startSession().catch((e) => renderError(e.message)); });
+
+applyStatic();
+mountSwitch($(".topbar-actions"), (code) => {
+  renderVoiceState();
+  if (lastState?.configuration) needsDraft = null;
+  switchLanguage(code).catch((e) => toast(e.message, "error"));
+});
 
 // Optional brand assets: assets/manifest.json lists what exists (generated at image build time).
 const LOGO_TYPES = /\.(svg|png|webp|jpe?g)$/i;
@@ -803,4 +890,4 @@ async function loadBrandAssets() {
 }
 
 // Load the asset manifest first so the first render already uses photos, logo and font.
-loadBrandAssets().finally(() => restoreSession().catch((e) => renderError(`Could not reach the configurator service: ${e.message}`, () => location.reload())));
+loadBrandAssets().finally(() => restoreSession().catch((e) => renderError(t("unreachable", { error: e.message }), () => location.reload())));

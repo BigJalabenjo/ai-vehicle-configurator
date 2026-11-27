@@ -18,6 +18,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 
+from .i18n import eur, group_word, t
 from .repository import CatalogRepository
 from .schemas import (
     Budget,
@@ -42,7 +43,7 @@ class UnknownModelError(LookupError):
 
 
 def _fmt_eur(value: int) -> str:
-    return f"€{value:,.0f}"
+    return eur(value)
 
 
 class ConfigurationEngine:
@@ -147,14 +148,14 @@ class ConfigurationEngine:
         known = [o for o in sel if o in self.repo.options]
         for oid in sel:
             if oid not in self.repo.options:
-                issues.append(Issue(code="unknown_option", message=f"Unknown option '{oid}'.", option_ids=[oid]))
+                issues.append(Issue(code="unknown_option", message=t("unknown_option", oid=oid), option_ids=[oid]))
         for oid in known:
             opt = self.repo.options[oid]
             if not self.is_available(oid, model):
                 issues.append(
                     Issue(
                         code="not_available",
-                        message=f"{opt.name} is not available on the {model.name}.",
+                        message=t("not_available", opt=opt.name, model=model.name, hint=""),
                         option_ids=[oid],
                         alternatives=self.models_offering(oid),
                     )
@@ -164,7 +165,7 @@ class ConfigurationEngine:
                     issues.append(
                         Issue(
                             code="dependency_missing",
-                            message=f"{opt.name} requires {self._name(req)}.",
+                            message=t("requires", opt=opt.name, req=self._name(req)),
                             option_ids=[oid, req],
                         )
                     )
@@ -173,7 +174,7 @@ class ConfigurationEngine:
                     issues.append(
                         Issue(
                             code="excluded_combination",
-                            message=f"{opt.name} cannot be combined with {self._name(exc)}.",
+                            message=t("excluded", opt=opt.name, other=self._name(exc)),
                             option_ids=[oid, exc],
                         )
                     )
@@ -183,15 +184,14 @@ class ConfigurationEngine:
                 issues.append(
                     Issue(
                         code="group_conflict",
-                        message=f"Only one {group.name.lower()} choice is allowed: "
-                        + ", ".join(self._name(m) for m in members)
-                        + ".",
+                        message=t("group_conflict", group=group_word(group.name),
+                                  names=", ".join(self._name(m) for m in members)),
                         option_ids=members,
                     )
                 )
             if group.required and not members:
                 issues.append(
-                    Issue(code="group_missing", message=f"A {group.name.lower()} choice is required.", option_ids=[])
+                    Issue(code="group_missing", message=t("group_missing", group=group_word(group.name)), option_ids=[])
                 )
         return issues
 
@@ -229,18 +229,18 @@ class ConfigurationEngine:
             if oid in model.standard_options:
                 lines.append(
                     OptionLine(id=oid, name=opt.name, category=opt.category, price=0, list_price=opt.price,
-                               status="standard", reason="Standard equipment")
+                               status="standard", reason=t("standard"))
                 )
             elif oid in locked:
                 lines.append(
                     OptionLine(id=oid, name=opt.name, category=opt.category, price=0, list_price=opt.price,
-                               status="included", reason=f"Included in {self._name(locked[oid])}")
+                               status="included", reason=t("included_in", pkg=self._name(locked[oid])))
                 )
             elif oid in required:
                 lines.append(
                     OptionLine(id=oid, name=opt.name, category=opt.category, price=opt.price, list_price=opt.price,
                                status="auto_added",
-                               reason="Required by " + ", ".join(self._name(r) for r in required[oid]))
+                               reason=t("required_by", names=", ".join(self._name(r) for r in required[oid])))
                 )
             else:
                 lines.append(
@@ -273,13 +273,13 @@ class ConfigurationEngine:
         catalog_options: list[OptionAvailability] = []
         for oid, opt in self.repo.options.items():
             if oid in model.standard_options and oid in normalized:
-                state, note = "standard", "Standard equipment"
+                state, note = "standard", t("standard")
             elif oid in locked:
-                state, note = "included", f"Included in {self._name(locked[oid])}"
+                state, note = "included", t("included_in", pkg=self._name(locked[oid]))
             elif oid in normalized:
                 state, note = "selected", ""
             elif not self.is_available(oid, model):
-                state, note = "unavailable", f"Not offered on the {model.series}"
+                state, note = "unavailable", t("not_offered_on", series=model.series)
             else:
                 state, note = "available", ""
             catalog_options.append(
@@ -330,7 +330,7 @@ class ConfigurationEngine:
                 name = self._name(oid)
                 others = [self._name(d) for d in removed if d != oid]
                 if others:
-                    name += " (and " + ", ".join(others) + ", which need it)"
+                    name = t("saving_with_dependents", name=name, others=", ".join(others))
                 savings.append(Saving(option_id=oid, name=name, saves=saves))
         savings.sort(key=lambda s: -s.saves)
         return savings[:5]
@@ -357,29 +357,29 @@ class ConfigurationEngine:
         oid = change.option_id
         if oid not in self.repo.options:
             return "rejected", current, [], None, Issue(
-                code="unknown_option", message=f"There is no option called '{oid}' in the catalog.", option_ids=[oid]
+                code="unknown_option", message=t("no_such_option_catalog", oid=oid), option_ids=[oid]
             )
         opt = self.repo.options[oid]
         if not self.is_available(oid, model):
             alternatives = self.models_offering(oid)
-            hint = f" It is available on: {', '.join(alternatives)}." if alternatives else ""
+            hint = t("available_on", models=", ".join(alternatives)) if alternatives else ""
             return "rejected", current, [], None, Issue(
                 code="not_available",
-                message=f"{opt.name} is not available on the {model.name}.{hint}",
+                message=t("not_available", opt=opt.name, model=model.name, hint=hint),
                 option_ids=[oid],
                 alternatives=alternatives,
             )
         locked = self.included_by(current)
         if oid in current or oid in locked:
-            where = f" (included in {self._name(locked[oid])})" if oid in locked else ""
-            return "noop", current, [Note(kind="info", option_id=oid, message=f"{opt.name} is already part of the configuration{where}.")], None, None
+            where = t("already_included", pkg=self._name(locked[oid])) if oid in locked else ""
+            return "noop", current, [Note(kind="info", option_id=oid, message=t("already_part", opt=opt.name, where=where))], None, None
 
         to_add = self.closure(oid)
         for dep in to_add[1:]:
             if not self.is_available(dep, model):
                 return "rejected", current, [], None, Issue(
                     code="dependency_unavailable",
-                    message=f"{opt.name} needs {self._name(dep)}, which is not offered on the {model.name}.",
+                    message=t("dependency_unavailable", opt=opt.name, dep=self._name(dep), model=model.name),
                     option_ids=[oid, dep],
                 )
 
@@ -393,12 +393,12 @@ class ConfigurationEngine:
                     continue
                 s = self.repo.options[sel]
                 if a.group and s.group == a.group:
-                    displaced[sel] = f"{a.name} would replace {s.name}"
+                    displaced[sel] = t("would_replace", new=a.name, old=s.name)
                     # replacing within the group the customer clicked, or replacing a standard item, is expected
                     if (added == oid and sel not in locked) or sel in model.standard_options:
                         silent.add(sel)
                 elif sel in a.excludes or added in s.excludes:
-                    displaced[sel] = f"{a.name} cannot be combined with {s.name}"
+                    displaced[sel] = t("cannot_combine", new=a.name, old=s.name)
         # Displacing an item locked in a package removes the package (and its other contents).
         changed = True
         while changed:
@@ -406,18 +406,18 @@ class ConfigurationEngine:
             for sel in list(displaced):
                 pkg = locked.get(sel)
                 if pkg and pkg not in displaced and pkg not in to_add:
-                    displaced[pkg] = f"{self._name(sel)} is part of the {self._name(pkg)}"
+                    displaced[pkg] = t("part_of_package", opt=self._name(sel), pkg=self._name(pkg))
                     changed = True
             for sel in list(displaced):
                 if self.repo.options[sel].includes:
                     for inc in self.repo.options[sel].includes:
                         if inc in current and inc not in displaced and inc not in to_add:
-                            displaced[inc] = f"comes with {self._name(sel)}"
+                            displaced[inc] = t("comes_with", pkg=self._name(sel))
                             silent.add(inc)
                             changed = True
                 for dep in self.dependents(sel, current):
                     if dep not in displaced and dep not in to_add:
-                        displaced[dep] = f"{self._name(dep)} requires {self._name(sel)}"
+                        displaced[dep] = t("dependent_requires", dep=self._name(dep), opt=self._name(sel))
                         changed = True
 
         significant = [d for d in displaced if d not in silent]
@@ -427,40 +427,40 @@ class ConfigurationEngine:
             removed_names = ", ".join(self._name(d) for d in shown)
             reasons = "; ".join(displaced[d] for d in significant)
             return "conflict", current, [], Conflict(
-                message=f"{opt.name} conflicts with your configuration: {reasons}. Adding it removes {removed_names}.",
+                message=t("add_conflict", opt=opt.name, reasons=reasons, removed=removed_names),
                 option_ids=[oid, *significant],
                 resolutions=[
-                    Resolution(label=f"Add {opt.name}, remove {removed_names}",
+                    Resolution(label=t("resolve_add", opt=opt.name, removed=removed_names),
                                change=ChangeRequest(action="add", option_id=oid, force=True)),
-                    Resolution(label=f"Keep {removed_names}", change=None),
+                    Resolution(label=t("resolve_keep", names=removed_names), change=None),
                 ],
             ), None
 
         new = [o for o in current if o not in displaced] + to_add
         new = self.normalize(model, new)
-        notes: list[Note] = [Note(kind="info", option_id=oid, message=f"Added {opt.name}.")]
+        notes: list[Note] = [Note(kind="info", option_id=oid, message=t("added", opt=opt.name))]
         for pkg in to_add:
             included = [i for i in self.repo.options[pkg].includes if i not in current]
             if included:
-                notes.append(Note(kind="info", option_id=pkg, message=f"{self._name(pkg)} includes "
-                                  + ", ".join(self._name(i) for i in included) + " at no extra cost."))
+                notes.append(Note(kind="info", option_id=pkg, message=t(
+                    "package_includes", pkg=self._name(pkg), items=", ".join(self._name(i) for i in included))))
         for dep in to_add[1:]:
             requirer = next((x for x in to_add if dep in self.repo.options[x].requires), None)
             if dep not in current and requirer:
                 notes.append(Note(kind="auto_added", option_id=dep,
-                                  message=f"Also added {self._name(dep)} because {self._name(requirer)} requires it."))
+                                  message=t("also_added", dep=self._name(dep), opt=self._name(requirer))))
         for d, reason in displaced.items():
             if d in silent and d in model.standard_options:
                 continue  # replacing standard equipment needs no explanation
             kind = "replaced" if d in silent else "removed"
-            notes.append(Note(kind=kind, option_id=d, message=f"Removed {self._name(d)}: {reason}."))
+            notes.append(Note(kind=kind, option_id=d, message=t("removed_because", opt=self._name(d), reason=reason)))
         return "applied", new, notes, None, None
 
     def _remove(self, model: VehicleModel, current: list[str], change: ChangeRequest):
         oid = change.option_id
         if oid not in self.repo.options:
             return "rejected", current, [], None, Issue(
-                code="unknown_option", message=f"There is no option called '{oid}'.", option_ids=[oid]
+                code="unknown_option", message=t("no_such_option", oid=oid), option_ids=[oid]
             )
         opt = self.repo.options[oid]
         locked = self.included_by(current)
@@ -468,34 +468,34 @@ class ConfigurationEngine:
             pkg = locked[oid]
             if not change.force:
                 return "conflict", current, [], Conflict(
-                    message=f"{opt.name} is part of the {self._name(pkg)}. Removing it means removing the package.",
+                    message=t("remove_package_item", opt=opt.name, pkg=self._name(pkg)),
                     option_ids=[oid, pkg],
                     resolutions=[
-                        Resolution(label=f"Remove {self._name(pkg)}",
+                        Resolution(label=t("resolve_remove", opt=self._name(pkg)),
                                    change=ChangeRequest(action="remove", option_id=pkg, force=True)),
-                        Resolution(label="Keep the package", change=None),
+                        Resolution(label=t("resolve_keep_package"), change=None),
                     ],
                 ), None
             return self._remove(model, current, ChangeRequest(action="remove", option_id=pkg, force=True))
         if oid not in current:
-            return "noop", current, [Note(kind="info", option_id=oid, message=f"{opt.name} is not in the configuration.")], None, None
+            return "noop", current, [Note(kind="info", option_id=oid, message=t("not_in_configuration", opt=opt.name))], None, None
         group = self.repo.groups.get(opt.group) if opt.group else None
         if group and group.required and oid in model.standard_options:
             return "rejected", current, [], None, Issue(
                 code="not_removable",
-                message=f"{opt.name} is the standard {group.name.lower()} choice; pick another {group.name.lower()} option instead.",
+                message=t("not_removable", opt=opt.name, group=group_word(group.name)),
                 option_ids=[oid],
             )
         dependents = self.dependents(oid, current)
         if dependents and not change.force:
             names = ", ".join(self._name(d) for d in dependents)
             return "conflict", current, [], Conflict(
-                message=f"{names} requires {opt.name}.",
+                message=t("required_by_selected", names=names, opt=opt.name),
                 option_ids=[oid, *dependents],
                 resolutions=[
-                    Resolution(label=f"Remove {opt.name} and {names}",
+                    Resolution(label=t("resolve_remove_both", opt=opt.name, names=names),
                                change=ChangeRequest(action="remove", option_id=oid, force=True)),
-                    Resolution(label=f"Keep {opt.name}", change=None),
+                    Resolution(label=t("resolve_keep_one", opt=opt.name), change=None),
                 ],
             ), None
         removed = {oid, *dependents}
@@ -505,14 +505,14 @@ class ConfigurationEngine:
                 removed.add(inc)
                 contents.append(inc)
         new = self.normalize(model, [o for o in current if o not in removed])
-        message = f"Removed {opt.name}"
+        message = t("removed", opt=opt.name)
         if dependents:
-            message += " and " + ", ".join(self._name(d) for d in dependents) + " (which require it)"
+            message += t("removed_dependents", names=", ".join(self._name(d) for d in dependents))
         if contents:
-            message += " including " + ", ".join(self._name(c) for c in contents)
+            message += t("removed_contents", names=", ".join(self._name(c) for c in contents))
         notes = [Note(kind="removed", option_id=oid, message=message + ".")]
         restored = [o for o in new if o not in current]
-        notes += [Note(kind="info", option_id=r, message=f"{self._name(r)} restored as standard.") for r in restored]
+        notes += [Note(kind="info", option_id=r, message=t("restored", opt=self._name(r))) for r in restored]
         return "applied", new, notes, None, None
 
     def switch_model(self, new_model_id: str, previous: Iterable[str], requirements: Requirements | None = None) -> ChangeResult:
@@ -540,7 +540,7 @@ class ConfigurationEngine:
                 continue
             else:
                 reason = error.message if error else (conflict.message if conflict else "")
-                notes.append(Note(kind="dropped", option_id=oid, message=f"Dropped {opt.name}: {reason}"))
+                notes.append(Note(kind="dropped", option_id=oid, message=t("dropped", opt=opt.name, reason=reason)))
         return ChangeResult(status="applied", notes=notes, configuration=self.view(new_model_id, options, requirements))
 
     # used by recommender

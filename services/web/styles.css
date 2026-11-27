@@ -61,6 +61,10 @@ svg { flex: none; }
 .brand-divider { width: 1px; height: 24px; background: var(--line-strong); }
 .product { font-size: 16px; font-weight: 400; }
 .topbar-actions { display: flex; align-items: center; gap: 28px; }
+.lang-switch { display: inline-flex; border: 1px solid var(--line-strong); border-radius: var(--radius); padding: 2px; }
+.lang-switch button { background: none; border: 0; border-radius: 2px; padding: 3px 9px; font-size: 12px; font-weight: 500; letter-spacing: .04em; color: var(--text-2); cursor: pointer; }
+.lang-switch button:hover { color: var(--text); }
+.lang-switch button[aria-pressed="true"] { background: var(--text); color: #fff; }
 
 /* ------------------------------------------------------------------ layout */
 /* Two columns that animate between modes. Only the chat column's width animates; the stage
@@ -254,6 +258,21 @@ table { border-collapse: collapse; width: 100%; font-size: 14px; }
   padding: 12px 14px; font: inherit; font-weight: 400; color: var(--text); }
 .composer textarea:focus { outline: none; border-color: var(--text); box-shadow: inset 0 0 0 1px var(--text); }
 .composer .btn { min-height: 48px; }
+
+/* voice mode */
+.voice-btn { flex: none; width: 48px; padding: 0; }
+.voice-btn svg { width: 20px; height: 20px; stroke: currentColor; stroke-width: 1.6; fill: none; stroke-linecap: round; }
+.voice-btn[aria-pressed="true"] { background: var(--blue); border-color: var(--blue); color: #fff; }
+.voice-status { display: flex; align-items: center; gap: 12px; max-width: var(--read-w); margin: 0 auto 12px;
+  font-size: 14px; color: var(--text-2); transition: max-width var(--move) var(--ease); }
+.voice-status[hidden] { display: none; }
+.voice-status .link { margin-left: auto; font-size: 14px; }
+.voice-dot { width: 10px; height: 10px; flex: none; border-radius: 50%; background: var(--blue);
+  box-shadow: 0 0 0 calc(var(--level, 0) * 9px) var(--blue-soft); transition: box-shadow .08s linear; }
+.voice-status[data-state="thinking"] .voice-dot,
+.voice-status[data-state="starting"] .voice-dot { animation: blink 1.2s infinite; box-shadow: none; }
+.voice-status[data-state="speaking"] .voice-dot { background: var(--ok); }
+body.mode-configure .voice-status { max-width: calc(var(--chat-w) - 32px); }
 body.busy .scroll { cursor: progress; }
 
 /* ------------------------------------------------------------------ responsive */

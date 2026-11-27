@@ -42,6 +42,7 @@ Settings in `.env` (all optional):
 |---|---|
 | `OPENAI_API_KEY` or `ANTHROPIC_API_KEY` | Turns on AI mode. Without a key, guided mode is used |
 | `LLM_MODEL` | Model to use (default `gpt-5.5` or `claude-opus-5-5`) |
+| `VOICE_ENABLED` | Hands-free voice mode via the mic button (default on; needs `OPENAI_API_KEY`) |
 | `APP_PASSWORD`, `APP_SECRET` | Password-protects the app; leave empty for open access |
 
 `.env` is git-ignored; never commit keys.

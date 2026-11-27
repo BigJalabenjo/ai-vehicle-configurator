@@ -6,11 +6,10 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from .i18n import eur, join_or, num, t, words
+
 Powertrain = Literal["bev", "phev", "petrol", "diesel"]
 Body = Literal["gran_coupe", "touring", "sav", "tourer", "sedan"]
-
-POWERTRAIN_LABEL = {"bev": "electric", "phev": "plug-in hybrid", "petrol": "petrol", "diesel": "diesel"}
-BODY_LABEL = {"gran_coupe": "Gran Coupé", "touring": "estate (Touring)", "sav": "SUV (SAV)", "tourer": "compact tourer", "sedan": "saloon"}
 
 
 class Requirements(BaseModel):
@@ -41,31 +40,31 @@ class Requirements(BaseModel):
         return Requirements.model_validate(data)
 
     def describe(self) -> list[tuple[str, str]]:
-        """(field, human label) pairs for the 'what I understood' panel."""
+        """(field, human label) pairs for the 'what I understood' panel, in the session's language."""
         out: list[tuple[str, str]] = []
+        pt = words("powertrain")
         if self.budget_max is not None:
-            out.append(("budget_max", f"Budget up to €{self.budget_max:,}"))
+            out.append(("budget_max", t("need_budget", amount=eur(self.budget_max))))
         if self.powertrain_required:
-            out.append(("powertrain_required", "Must be " + " or ".join(POWERTRAIN_LABEL[p] for p in self.powertrain_required)))
+            out.append(("powertrain_required", t("need_must_be", pts=join_or([pt[p] for p in self.powertrain_required]))))
         if self.powertrain_preferred:
-            out.append(("powertrain_preferred", "Prefers " + " or ".join(POWERTRAIN_LABEL[p] for p in self.powertrain_preferred)))
+            out.append(("powertrain_preferred", t("need_prefers", pts=join_or([pt[p] for p in self.powertrain_preferred]))))
         if self.child_seats:
-            out.append(("child_seats", f"{self.child_seats} child seat{'s' if self.child_seats > 1 else ''}"))
+            out.append(("child_seats", t("need_child_seats" if self.child_seats > 1 else "need_child_seat", n=self.child_seats)))
         if self.min_seats:
-            out.append(("min_seats", f"At least {self.min_seats} seats"))
+            out.append(("min_seats", t("need_min_seats", n=self.min_seats)))
         if self.long_distance:
-            out.append(("long_distance", "Regular long-distance trips"))
+            out.append(("long_distance", t("need_long_distance")))
         if self.towing_kg is not None:
-            out.append(("towing_kg", "Bike carrier" if self.towing_kg == 0 else f"Towing {self.towing_kg:,} kg"))
+            out.append(("towing_kg", t("need_bike_carrier") if self.towing_kg == 0 else t("need_towing", kg=num(self.towing_kg))))
         if self.min_trunk_l:
-            out.append(("min_trunk_l", f"Boot ≥ {self.min_trunk_l} l"))
+            out.append(("min_trunk_l", t("need_trunk", l=self.min_trunk_l)))
         if self.body_styles:
-            out.append(("body_styles", " or ".join(BODY_LABEL[b] for b in self.body_styles)))
+            out.append(("body_styles", join_or([words("body")[b] for b in self.body_styles])))
         if self.sportiness is not None:
             pct = round(self.sportiness * 100)
-            label = "Comfort-focused" if pct < 40 else "Sporty" if pct > 60 else "Balanced comfort/sport"
-            out.append(("sportiness", label))
+            out.append(("sportiness", t("need_comfort") if pct < 40 else t("need_sporty") if pct > 60 else t("need_balanced")))
         if self.must_have_options:
             names = [o.removeprefix("pkg_").replace("_", " ") for o in self.must_have_options]
-            out.append(("must_have_options", "Must have: " + ", ".join(names)))
+            out.append(("must_have_options", t("need_must_have", names=", ".join(names))))
         return out

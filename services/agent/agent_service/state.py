@@ -15,10 +15,12 @@ from typing import Any, Protocol
 from pydantic import BaseModel, Field
 
 from .domain import Requirements
+from .i18n import DEFAULT, Language
 
 
 class SessionState(BaseModel):
     id: str = Field(default_factory=lambda: uuid.uuid4().hex)
+    language: Language = DEFAULT
     created_at: float = Field(default_factory=time.time)
     updated_at: float = Field(default_factory=time.time)
     requirements: Requirements = Requirements()

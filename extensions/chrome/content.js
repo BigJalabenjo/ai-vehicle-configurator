@@ -262,8 +262,10 @@
       frame = document.createElement("iframe");
       frame.title = "Configurator Assistant";
       frame.dataset.src = appUrl;
+      // Cross-site frames get the microphone only when allowed here (for the app's voice mode).
+      // Chrome then asks the visitor once, on behalf of this site. Set before src, it applies on load.
+      frame.allow = "clipboard-write; microphone";
       frame.src = appUrl;
-      frame.allow = "clipboard-write";
       panel.append(frame);
     }
     previousOverflow = document.documentElement.style.overflow;

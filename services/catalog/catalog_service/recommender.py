@@ -11,6 +11,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from . import i18n
+from .i18n import eur, num, t
 from .schemas import ModelEvaluation, RecommendResponse, Requirements, Tradeoff, VehicleModel, Violation
 
 if TYPE_CHECKING:
@@ -18,11 +20,6 @@ if TYPE_CHECKING:
 
 LONG_DISTANCE_MIN_RANGE_KM = 450
 
-POWERTRAIN_LABEL = {"bev": "Fully electric", "phev": "Plug-in hybrid", "petrol": "Petrol", "diesel": "Diesel"}
-
-
-def eur(value: int) -> str:
-    return f"€{value:,.0f}"
 
 
 def _clamp(value: float, lo: float, hi: float) -> float:
@@ -62,54 +59,56 @@ def requirement_violations(
     out: list[Violation] = []
 
     if req.body_styles and model.body not in req.body_styles:
-        out.append(Violation(code="body", message=f"Body style is {model.body.replace('_', ' ')}",
-                             relax_patch={"body_styles": []}, relax_label="Consider other body styles"))
+        out.append(Violation(code="body", message=t("v_body", body=i18n.body(model.body)),
+                             relax_patch={"body_styles": []}, relax_label=t("v_body_relax")))
     if req.powertrain_required and model.powertrain not in req.powertrain_required:
         out.append(Violation(
-            code="powertrain", message=f"{POWERTRAIN_LABEL[model.powertrain]}, not {' / '.join(POWERTRAIN_LABEL[p] for p in req.powertrain_required).lower()}",
+            code="powertrain", message=t("v_powertrain", has=i18n.powertrain(model.powertrain),
+                                         wanted=" / ".join(i18n.powertrain(p, inline=True) for p in req.powertrain_required)),
             relax_patch={"powertrain_required": [], "powertrain_preferred": list(req.powertrain_required)},
-            relax_label=f"Also consider {POWERTRAIN_LABEL[model.powertrain].lower()}",
+            relax_label=t("v_powertrain_relax", pt=i18n.powertrain(model.powertrain, inline=True)),
         ))
     seats = required_seat_count(req)
     if seats and specs["seats"] < seats:
-        out.append(Violation(code="seats", message=f"Seats {specs['seats']}, you need {seats}",
-                             relax_patch={"min_seats": specs["seats"]}, relax_label=f"Accept {specs['seats']} seats"))
+        out.append(Violation(code="seats", message=t("v_seats", seats=specs["seats"], need=seats),
+                             relax_patch={"min_seats": specs["seats"]}, relax_label=t("v_seats_relax", seats=specs["seats"])))
     if (req.child_seats or 0) >= 3 and not model.rear_three_child_seats and specs["seats"] < 7:
-        out.append(Violation(code="child_seats", message="Rear bench does not fit three child seats side by side",
-                             relax_patch={"child_seats": 2}, relax_label="Plan for two child seats in the rear"))
+        out.append(Violation(code="child_seats", message=t("v_child_seats"),
+                             relax_patch={"child_seats": 2}, relax_label=t("v_child_seats_relax")))
     if req.towing_kg is not None:
         if model.tow_kg == 0:
-            out.append(Violation(code="towing", message="No tow hitch available",
-                                 relax_patch={"towing_kg": None}, relax_label="Skip towing"))
+            out.append(Violation(code="towing", message=t("v_no_hitch"),
+                                 relax_patch={"towing_kg": None}, relax_label=t("v_skip_towing")))
         elif req.towing_kg > model.tow_kg:
-            out.append(Violation(code="towing", message=f"Tows max {model.tow_kg:,} kg, you need {req.towing_kg:,} kg",
-                                 relax_patch={"towing_kg": model.tow_kg}, relax_label=f"Tow up to {model.tow_kg:,} kg"))
+            out.append(Violation(code="towing", message=t("v_tow_max", max=num(model.tow_kg), need=num(req.towing_kg)),
+                                 relax_patch={"towing_kg": model.tow_kg}, relax_label=t("v_tow_relax", max=num(model.tow_kg))))
         elif "tow_hitch" not in options:
-            out.append(Violation(code="towing", message="Tow hitch not yet added",
-                                 relax_patch={"towing_kg": None}, relax_label="Skip towing"))
+            out.append(Violation(code="towing", message=t("v_hitch_missing"),
+                                 relax_patch={"towing_kg": None}, relax_label=t("v_skip_towing")))
     if req.long_distance and model.powertrain == "bev" and (specs["electric_range_km"] or 0) < LONG_DISTANCE_MIN_RANGE_KM:
         out.append(Violation(
             code="range",
-            message=f"Range {specs['electric_range_km']} km, below the {LONG_DISTANCE_MIN_RANGE_KM} km we recommend for regular long trips",
-            relax_patch={"long_distance": False}, relax_label=f"Accept {specs['electric_range_km']} km range",
+            message=t("v_range", range=specs["electric_range_km"], min=LONG_DISTANCE_MIN_RANGE_KM),
+            relax_patch={"long_distance": False}, relax_label=t("v_range_relax", range=specs["electric_range_km"]),
         ))
     if req.min_trunk_l and specs["trunk_l"] < req.min_trunk_l:
-        out.append(Violation(code="trunk", message=f"Boot {specs['trunk_l']} l, you asked for {req.min_trunk_l} l",
-                             relax_patch={"min_trunk_l": specs["trunk_l"]}, relax_label=f"Accept {specs['trunk_l']} l boot"))
+        out.append(Violation(code="trunk", message=t("v_trunk", trunk=specs["trunk_l"], need=req.min_trunk_l),
+                             relax_patch={"min_trunk_l": specs["trunk_l"]}, relax_label=t("v_trunk_relax", trunk=specs["trunk_l"])))
     for oid in req.must_have_options:
         if oid not in engine.repo.options:
             continue
         name = engine.repo.options[oid].name
         others = [o for o in req.must_have_options if o != oid]
         if not engine.is_available(oid, model):
-            out.append(Violation(code="option_unavailable", message=f"{name} is not offered",
-                                 relax_patch={"must_have_options": others}, relax_label=f"Do without {name}"))
+            out.append(Violation(code="option_unavailable", message=t("v_option_not_offered", name=name),
+                                 relax_patch={"must_have_options": others}, relax_label=t("v_option_relax", name=name)))
         elif oid not in options and oid not in locked:
-            out.append(Violation(code="option_unavailable", message=f"{name} not yet added",
-                                 relax_patch={"must_have_options": others}, relax_label=f"Do without {name}"))
+            out.append(Violation(code="option_unavailable", message=t("v_option_not_added", name=name),
+                                 relax_patch={"must_have_options": others}, relax_label=t("v_option_relax", name=name)))
     if req.budget_max is not None and total > req.budget_max:
-        out.append(Violation(code="budget", message=f"{eur(total)} is {eur(total - req.budget_max)} over your {eur(req.budget_max)} budget",
-                             relax_patch={"budget_max": total}, relax_label=f"Raise budget to {eur(total)}"))
+        out.append(Violation(code="budget", message=t("v_budget", total=eur(total), over=eur(total - req.budget_max),
+                                                      budget=eur(req.budget_max)),
+                             relax_patch={"budget_max": total}, relax_label=t("v_budget_relax", total=eur(total))))
     return out
 
 
@@ -126,39 +125,38 @@ def evaluate(engine: "ConfigurationEngine", model: VehicleModel, req: Requiremen
     if pref:
         if model.powertrain in pref:
             score += 20
-            reasons.append(f"{POWERTRAIN_LABEL[model.powertrain]}, as you prefer")
+            reasons.append(t("r_preferred", pt=i18n.powertrain(model.powertrain)))
         elif "bev" in pref and model.powertrain == "phev":
             score += 6
-            reasons.append(f"Plug-in hybrid: ~{model.electric_range_km} km electric for daily driving, no charging stops on trips")
+            reasons.append(t("r_phev", km=model.electric_range_km))
         else:
             score -= 8
     if req.long_distance:
         if model.powertrain == "bev":
             rng = specs["electric_range_km"] or 0
             score += _clamp((rng - LONG_DISTANCE_MIN_RANGE_KM) / 15, 0, 10) + _clamp((model.dc_charge_kw or 0) / 40, 0, 5)
-            reasons.append(f"{rng} km range and {model.dc_charge_kw} kW fast charging for long trips")
+            reasons.append(t("r_bev_long", range=rng, kw=model.dc_charge_kw))
         else:
             score += 8
-            reasons.append(f"{specs['total_range_km']:,} km total range, refuel in minutes")
+            reasons.append(t("r_ice_long", km=num(specs["total_range_km"])))
     if (req.child_seats or 0) >= 3 and model.rear_three_child_seats:
         score += 5
-        reasons.append("Rear bench fits three child seats side by side")
+        reasons.append(t("r_three_child_seats"))
     if req.child_seats or (req.min_seats or 0) >= 5:
         score += _clamp((specs["trunk_l"] - 450) / 30, 0, 5)
         if specs["trunk_l"] >= 550:
-            reasons.append(f"{specs['trunk_l']} l boot for family luggage")
+            reasons.append(t("r_boot", trunk=specs["trunk_l"]))
     if req.sportiness is not None:
         fit = req.sportiness * model.sport + (1 - req.sportiness) * model.comfort
         score += fit * 10
         if fit >= 0.75:
-            reasons.append("Sporty character matches your preference" if req.sportiness >= 0.5
-                           else "Comfort-oriented, matches your preference")
+            reasons.append(t("r_sporty") if req.sportiness >= 0.5 else t("r_comfort"))
     if req.towing_kg is not None and model.tow_kg >= (req.towing_kg or 0) > 0:
-        reasons.append(f"Tows up to {model.tow_kg:,} kg")
+        reasons.append(t("r_tows", kg=num(model.tow_kg)))
     if req.budget_max is not None and entry_price <= req.budget_max:
         headroom = req.budget_max - entry_price
         score += _clamp(headroom / 2000, 0, 8)
-        reasons.append(f"From {eur(entry_price)}, {eur(headroom)} below your budget")
+        reasons.append(t("r_budget", price=eur(entry_price), headroom=eur(headroom)))
     if not reasons:
         reasons.append(model.summary)
 
@@ -218,7 +216,7 @@ def _tradeoffs(misses: list[ModelEvaluation], req: Requirements) -> list[Tradeof
         gains = e.reasons[0] if e.reasons else ""
         out.append(Tradeoff(
             label=label,
-            description=f"{e.name} would fit ({'; '.join(v.message for v in e.violations)}). {gains}".strip(),
+            description=t("tradeoff", name=e.name, violations="; ".join(v.message for v in e.violations), gains=gains).strip(),
             model_id=e.model_id,
             relax_patch=patch,
         ))
@@ -227,13 +225,13 @@ def _tradeoffs(misses: list[ModelEvaluation], req: Requirements) -> list[Tradeof
 
 def _explain(fits: list[ModelEvaluation], near: list[ModelEvaluation]) -> str:
     if fits:
-        msg = f"{len(fits)} model(s) meet all requirements"
+        msg = t("explain_fits", n=len(fits))
         if near:
-            msg += f"; {len(near)} more would fit with a small compromise"
+            msg += t("explain_more", n=len(near))
         return msg + "."
     if near:
-        return "No model meets every requirement. The closest options each need one compromise."
-    return "No model is close to the requirements; consider relaxing several constraints."
+        return t("explain_near")
+    return t("explain_none")
 
 
 def option_recommendations(
@@ -241,13 +239,13 @@ def option_recommendations(
 ) -> dict[str, str]:
     wanted: list[tuple[str, str]] = []
     if req.long_distance:
-        wanted.append(("long_distance", "Recommended for regular long-distance trips"))
+        wanted.append(("long_distance", t("o_long_distance")))
     if req.child_seats or (req.min_seats or 0) >= 5:
-        wanted.append(("family", "Useful for family travel"))
+        wanted.append(("family", t("o_family")))
     if req.sportiness is not None and req.sportiness >= 0.65:
-        wanted.append(("sport", "Matches your sporty preference"))
+        wanted.append(("sport", t("o_sport")))
     if req.sportiness is not None and req.sportiness <= 0.35:
-        wanted.append(("comfort", "Matches your comfort preference"))
+        wanted.append(("comfort", t("o_comfort")))
     locked = engine.included_by(options)
     locked_groups = {engine.repo.options[o].group for o in locked if engine.repo.options[o].group}
     chosen_groups = {engine.repo.options[o].group for o in options
@@ -277,16 +275,10 @@ def option_recommendations(
                 if engine.repo.options[inc].group:
                     covered.add(engine.repo.options[inc].group)
     if req.towing_kg is not None and "tow_hitch" not in options and engine.is_available("tow_hitch", model):
-        recs["tow_hitch"] = "Needed for towing"
+        recs["tow_hitch"] = t("o_towing")
     return dict(list(recs.items())[:6])
 
 
-TAG_REASONS = {
-    "long_distance": ("long_distance", "Supports your regular long-distance trips"),
-    "family": ("family", "Useful for family travel"),
-    "sport": ("sport", "Matches your sporty preference"),
-    "comfort": ("comfort", "Adds comfort"),
-}
 
 
 def selection_reason(engine: "ConfigurationEngine", model: VehicleModel, option_id: str, req: Requirements) -> str:
@@ -294,15 +286,15 @@ def selection_reason(engine: "ConfigurationEngine", model: VehicleModel, option_
     if option_id in options_needed_for(engine, model, req):
         # The hitch can be needed for a towing weight, or simply be a must-have without one.
         if option_id == "tow_hitch" and req.towing_kg is not None:
-            return "Needed for your bike carrier" if req.towing_kg == 0 else f"Needed to tow {req.towing_kg:,} kg"
+            return t("s_bike_carrier") if req.towing_kg == 0 else t("s_tow", kg=num(req.towing_kg))
         if option_id == "third_row":
-            return "Needed for the seats you asked for"
-        return "You asked for this"
+            return t("s_seats")
+        return t("s_asked")
     tags = engine.repo.options[option_id].tags
     if req.long_distance and "long_distance" in tags:
-        return TAG_REASONS["long_distance"][1]
+        return t("s_long_distance")
     if (req.child_seats or (req.min_seats or 0) >= 5) and "family" in tags:
-        return TAG_REASONS["family"][1]
+        return t("o_family")
     if req.sportiness is not None and req.sportiness >= 0.65 and "sport" in tags:
-        return TAG_REASONS["sport"][1]
-    return "Your choice"
+        return t("o_sport")
+    return t("s_choice")

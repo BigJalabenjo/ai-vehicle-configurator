@@ -10,6 +10,7 @@ import uuid
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
 
+from . import i18n
 from .recommender import recommend
 from .repository import CatalogRepository
 from .rules import ConfigurationEngine, UnknownModelError
@@ -31,6 +32,26 @@ repo = CatalogRepository.from_file()
 engine = ConfigurationEngine(repo)
 
 app = FastAPI(title="Vehicle Catalog & Configuration Service", version="1.0.0")
+
+
+class LanguageMiddleware:
+    """Sets the response language (Accept-Language: en | de) for everything handled in this request."""
+
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http":
+            return await self.app(scope, receive, send)
+        header = dict(scope["headers"]).get(b"accept-language", b"").decode("latin-1")
+        token = i18n.current.set(i18n.pick(header))
+        try:
+            await self.app(scope, receive, send)
+        finally:
+            i18n.current.reset(token)
+
+
+app.add_middleware(LanguageMiddleware)
 
 
 @app.middleware("http")
